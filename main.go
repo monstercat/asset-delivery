@@ -108,7 +108,11 @@ func handleHttp (s *Service) http.HandlerFunc {
 			}
 
 			if v := query.Get("clear"); v == s.ClearCode {
-				clearCache()
+				if err := clearCache(s, r.URL.Path, size); err != nil {
+					w.WriteHeader(http.StatusInternalServerError)
+					fmt.Fprintf(w, err.Error())
+					return
+				}
 				w.WriteHeader(http.StatusNoContent)
 				return
 			}
