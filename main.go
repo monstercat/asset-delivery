@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"bytes"
 	"errors"
 	"flag"
@@ -70,11 +71,12 @@ func main () {
 
 	http.HandleFunc("/", handleHttp(s))
 
-    err = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
-    if err != nil {
-    	fmt.Printf("issue opening server: %s\n", err.Error())
-    	os.Exit(1)
-    }
+	log.Println("Opening HTTP server")
+	err = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	if err != nil {
+		fmt.Printf("issue opening server: %s\n", err.Error())
+		os.Exit(1)
+	}
 }
 
 func parseSize(str string) (uint64, error) {
@@ -95,6 +97,8 @@ func handleHttp (s *Service) http.HandlerFunc {
 			fmt.Fprintf(w, "GET methods only.")
 			return
 		}
+
+		log.Printf("request: %s", r.URL.Path)
 
 		// Let's handle resize of local files
 		query := r.URL.Query()
