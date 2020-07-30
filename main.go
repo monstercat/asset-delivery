@@ -98,7 +98,14 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("request: %s\n", r.URL.String())
+	logError := func(err error) {
+		log.Printf("request error: [%s] %s\n", r.URL.String(), err.Error())
+	}
+
+	writeError := func (status int, msg string) {
+		w.WriteHeader(status)
+		fmt.Fprintf(w, msg)
+	}
 
 	// Let's handle resize of local files
 	query := r.URL.Query()
@@ -106,35 +113,31 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if imageWidth != "" {
 		size, err := parseSize(imageWidth)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, err.Error())
+			writeError(http.StatusBadRequest, err.Error())
+			logError(err)
 			return
 		}
 
 		if v := query.Get("clear"); v == s.ClearCode {
 			if err := clearCache(s, r.URL.Path, size); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprintf(w, err.Error())
+				writeError(http.StatusInternalServerError, "An issue occurred while attempting the operation.")
+				logError(err)
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
 			return
 		} else if v != "" {
-			w.WriteHeader(http.StatusUnauthorized)
-			fmt.Fprintf(w, "Not authorized to perform that action.")
+			writeError(http.StatusUnauthorized, "Not authorized to perform that action.")
 			return
 		}
 
 		url, err := cacheAndServe(s, r.URL.Path, size)
 		if os.IsNotExist(err) {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "Not found.")
-			fmt.Println(err)
+			writeError(http.StatusNotFound, "Not found.")
 			return
 		} else if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "An error occured.")
-			fmt.Println(err)
+			writeError(http.StatusInternalServerError, "An error occurred.")
+			logError(err)
 			return
 		}
 		http.Redirect(w, r, url, http.StatusFound)
