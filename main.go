@@ -69,10 +69,8 @@ func main () {
 		return
 	}
 
-	http.HandleFunc("/", handleHttp(s))
-
 	log.Println("Opening HTTP server")
-	err = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	err = http.ListenAndServe(fmt.Sprintf(":%d", port), s)
 	if err != nil {
 		fmt.Printf("issue opening server: %s\n", err.Error())
 		os.Exit(1)
@@ -90,54 +88,52 @@ func parseSize(str string) (uint64, error) {
 	return size, nil
 }
 
-func handleHttp (s *Service) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != "GET" {
-			w.WriteHeader(http.StatusForbidden)
-			fmt.Fprintf(w, "GET methods only.")
+func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "GET methods only.")
+		return
+	}
+
+	log.Printf("request: %s", r.URL.Path)
+
+	// Let's handle resize of local files
+	query := r.URL.Query()
+	imageWidth := query.Get("image_width")
+	if imageWidth != "" {
+		size, err := parseSize(imageWidth)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			fmt.Fprintf(w, err.Error())
 			return
 		}
 
-		log.Printf("request: %s", r.URL.Path)
-
-		// Let's handle resize of local files
-		query := r.URL.Query()
-		imageWidth := query.Get("image_width")
-		if imageWidth != "" {
-			size, err := parseSize(imageWidth)
-			if err != nil {
-				w.WriteHeader(http.StatusBadRequest)
+		if v := query.Get("clear"); v == s.ClearCode {
+			if err := clearCache(s, r.URL.Path, size); err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintf(w, err.Error())
 				return
 			}
-
-			if v := query.Get("clear"); v == s.ClearCode {
-				if err := clearCache(s, r.URL.Path, size); err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					fmt.Fprintf(w, err.Error())
-					return
-				}
-				w.WriteHeader(http.StatusNoContent)
-				return
-			}
-
-			url, err := cacheAndServe(s, r.URL.Path, size)
-			if os.IsNotExist(err) {
-				w.WriteHeader(http.StatusNotFound)
-				fmt.Fprintf(w, "Not found.")
-				fmt.Println(err)
-				return
-			} else if err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprintf(w, "An error occured.")
-				fmt.Println(err)
-				return
-			}
-			http.Redirect(w, r, url, http.StatusFound)
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
 
-		w.WriteHeader(http.StatusNotFound)
+		url, err := cacheAndServe(s, r.URL.Path, size)
+		if os.IsNotExist(err) {
+			w.WriteHeader(http.StatusNotFound)
+			fmt.Fprintf(w, "Not found.")
+			fmt.Println(err)
+			return
+		} else if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			fmt.Fprintf(w, "An error occured.")
+			fmt.Println(err)
+			return
+		}
+		http.Redirect(w, r, url, http.StatusFound)
 	}
+
+	w.WriteHeader(http.StatusNotFound)
 }
 
 func clearCache(s *Service, filename string, size uint64) error {
