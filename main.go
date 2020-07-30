@@ -1,49 +1,120 @@
 package main
 
 import (
-	"context"
-	"cloud.google.com/go/storage"
+	"bytes"
 	"errors"
+	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/discordapp/lilliput"
-	"google.golang.org/api/googleapi"
-	"google.golang.org/api/option"
+	s3util "github.com/monstercat/golib/s3"
 	"io/ioutil"
-	"path/filepath"
+	"mime"
 	"net/http"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 )
 
-const (
-	ENDPOINT = "https://storage.googleapis.com/mcat-01-bucket-01/"
-	ASSETS_PATH = "assets"
-	CACHE_PATH = "asset-delivery-cache"
-)
+const MaxSize = 4096
+
+type Service struct {
+	Session *session.Session
+	Bucket string
+	AssetDir string
+	ClearCode string
+}
+
+func (s *Service) GetSession() *session.Session {
+	return s.Session
+}
+
+func (s *Service) DefaultBucket() string {
+	return s.Bucket
+}
+
+func (s *Service) MkHashKey(key string) string {
+	return key
+}
+
+func (s *Service) MkURL(key string) string {
+	return fmt.Sprintf("https://%s.s3.amazonaws.com/%s", s.DefaultBucket(), key)
+}
+
+func (s *Service) GetAssetPath(str string) string {
+	return filepath.Join(s.AssetDir, str)
+}
 
 func main () {
-	ctx := context.Background()
-	clientOpts := option.WithCredentialsFile("./key.json")
-	client, err := storage.NewClient(ctx, clientOpts)
-	if err != nil {
-		fmt.Println(err)
-		panic(err)
-	}
-	bucket := client.Bucket("mcat-01-bucket-01")
+	s := &Service{}
+	var port int
 
-	http.HandleFunc("/", func (w http.ResponseWriter, r *http.Request) {
+	flag.IntVar(&port, "p", 80, "The port to utilize for HTTP")
+	flag.StringVar(&s.Bucket, "b", "", "S3 bucket to put cached images")
+	flag.StringVar(&s.AssetDir, "dir", ".", "The asset directory to serve")
+	flag.StringVar(&s.ClearCode, "code", "itscooltorefreshwithbudlight", "The code to use to delete a cached resized image.")
+	flag.Parse()
+
+	var err error
+	s.Session, err = session.NewSession(aws.NewConfig().WithCredentials(credentials.NewEnvCredentials()))
+	if err != nil {
+		fmt.Printf("aws session error: %s\n", err.Error())
+		os.Exit(1)
+		return
+	}
+
+	http.HandleFunc("/", handleHttp(s))
+
+    err = http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+    if err != nil {
+    	fmt.Printf("issue opening server: %s\n", err.Error())
+    	os.Exit(1)
+    }
+}
+
+func parseSize(str string) (uint64, error) {
+	size, err := strconv.ParseUint(str, 10, 32)
+	if err != nil {
+		return 0, errors.New("bad image size provided")
+	}
+	if size > MaxSize {
+		return 0, errors.New(fmt.Sprintf(`image size cannot exceed %d`, MaxSize))
+	}
+	return size, nil
+}
+
+func handleHttp (s *Service) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "GET" {
 			w.WriteHeader(http.StatusForbidden)
 			fmt.Fprintf(w, "GET methods only.")
 			return
 		}
 
-		objPath := assetPath(r.URL.Path)
+		// Let's handle resize of local files
 		query := r.URL.Query()
-		image_width := query.Get("image_width")
-		if image_width != "" {
-			objPath, err = makeImage(bucket, r.URL.Path, image_width)
-			if errCode(err) == 404 {
+		imageWidth := query.Get("image_width")
+		if imageWidth != "" {
+			size, err := parseSize(imageWidth)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				fmt.Fprintf(w, err.Error())
+				return
+			}
+
+			if v := query.Get("clear"); v == s.ClearCode {
+				clearCache()
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+
+			url, err := cacheAndServe(s, r.URL.Path, size)
+			if os.IsNotExist(err) {
 				w.WriteHeader(http.StatusNotFound)
 				fmt.Fprintf(w, "Not found.")
 				fmt.Println(err)
@@ -54,135 +125,71 @@ func main () {
 				fmt.Println(err)
 				return
 			}
+			http.Redirect(w, r, url, http.StatusFound)
 		}
 
-		obj := bucket.Object(objPath)
-		acl := obj.ACL()
-		acls, err := acl.List(ctx)
-		if errCode(err) == 404 {
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, "Not found.")
-			return
-		} else if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			fmt.Fprintf(w, "An error occured.")
-			fmt.Println(err)
-			return
-		}
-
-		// All assets should be publicly available
-		if !isPublic(acls) {
-			acl.Set(ctx, storage.AllUsers, storage.RoleReader)
-		}
-
-		http.Redirect(w, r, ENDPOINT + objPath, http.StatusFound)
-	})
-
-    err = http.ListenAndServe(":1337", nil)
-    if err != nil {
-    	panic(err)
-    }
-}
-
-func isPublic (acls []storage.ACLRule) bool {
-	value := false
-	for _, rule := range acls {
-		if rule.Entity == storage.AllUsers && rule.Role == storage.RoleReader {
-			value = true
-		}
-	}
-	return value
-}
-
-func errCode (err error) int {
-	if err, ok := err.(*googleapi.Error); !ok {
-		return -1
-	} else {
-		return err.Code
+		w.WriteHeader(http.StatusNotFound)
 	}
 }
 
-func assetPath (str string) string {
-	return filepath.Join(ASSETS_PATH, str)
+func clearCache(s *Service, filename string, size uint64) error {
+	return s3util.DeleteS3(s, path.Join(strconv.Itoa(int(size)), filename))
 }
 
-func imagePath (str string, size string) string {
-	filename := size + "_" + filepath.Base(str)
-	return filepath.Join(CACHE_PATH, filepath.Dir(str), filename)
-}
-
-func makeImage (bucket *storage.BucketHandle, str string, size string) (string, error) {
-	cpath := imagePath(str, size)
-	usize, err := strconv.ParseUint(size, 10, 32)
+func cacheAndServe(s *Service, filename string, size uint64) (string, error) {
+	key := path.Join(strconv.Itoa(int(size)), filename)
+	_, ok, err := s3util.ObjectExistsS3(s, key)
 	if err != nil {
-		return cpath, err
-	}
-	if usize > 4096 {
-		return cpath, errors.New("\"image_width\" cannot exceed 4096.")
-	}
-
-	ctx := context.Background()
-	cobj := bucket.Object(cpath)
-	reader, err := cobj.NewReader(ctx)
-	if err != nil {
-		if err != storage.ErrObjectNotExist {
-			return cpath, err
-		}
-	} else {
-		reader.Close()
-		return cpath, nil
+		return "", err
+	} else if ok {
+		return s.MkURL(key), nil
 	}
 
-	apath := assetPath(str)
-	aobj := bucket.Object(apath)
-	reader, err = aobj.NewReader(ctx)
+	// Let's resize the image, serve it, and cache it
+	reader, err := os.Open(s.GetAssetPath(filename))
 	if err != nil {
-		return cpath, err
+		return "", err
 	}
 	defer reader.Close()
 
 	buf, err := ioutil.ReadAll(reader)
 	if err != nil {
-		return cpath, err
+		return "", err
 	}
 
 	decoder, err := lilliput.NewDecoder(buf)
 	if err != nil {
-		return cpath, err
+		return "", err
 	}
 	defer decoder.Close()
 
 	header, err := decoder.Header()
 	if err != nil {
-		return cpath, err
+		return "", err
 	}
 
-	ratio := float64(header.Height()) / float64(header.Width())
-	ops := lilliput.NewImageOps(4096)
+	var ratio float64
+	if header.Width() <= 0 {
+		ratio = 1
+	} else {
+		ratio = float64(header.Height()) / float64(header.Width())
+	}
+
+	ops := lilliput.NewImageOps(MaxSize)
 	defer ops.Close()
 
 	img := make([]byte, 50*1024*1024)
 	opts := &lilliput.ImageOptions{
 		FileType:     "." + strings.ToLower(decoder.Description()),
-		Width:        int(usize),
-		Height:       int(float64(usize) * ratio),
+		Width:        int(size),
+		Height:       int(float64(size) * ratio),
 		ResizeMethod: lilliput.ImageOpsResize,
 	}
 	img, err = ops.Transform(decoder, opts, img)
 	if err != nil {
-		return cpath, err
+		return "", err
 	}
 
-	writer := cobj.NewWriter(ctx)
-	if err != nil {
-		return cpath, err
-	}
-	defer writer.Close()
-
-	_, err = writer.Write(img)
-	if err != nil {
-		return cpath, err
-	}
-
-	return cpath, nil
+	err = s3util.UploadS3(s, bytes.NewReader(img), mime.TypeByExtension(filepath.Ext(filename)), s3.BucketCannedACLPublicRead, key)
+	return s.MkURL(key), err
 }
