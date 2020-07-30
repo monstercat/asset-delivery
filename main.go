@@ -98,7 +98,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("request: %s\n", r.URL.Path)
+	log.Printf("request: %s\n", r.URL.String())
 
 	// Let's handle resize of local files
 	query := r.URL.Query()
@@ -118,6 +118,10 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			w.WriteHeader(http.StatusNoContent)
+			return
+		} else if v != "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			fmt.Fprintf(w, "Not authorized to perform that action.")
 			return
 		}
 
