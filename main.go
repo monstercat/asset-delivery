@@ -62,7 +62,10 @@ func main () {
 	flag.Parse()
 
 	var err error
-	s.Session, err = session.NewSession(aws.NewConfig().WithCredentials(credentials.NewEnvCredentials()))
+	awsConfig := aws.NewConfig().
+		WithRegion(os.Getenv("AWS_DEFAULT_REGION")).
+		WithCredentials(credentials.NewEnvCredentials())
+	s.Session, err = session.NewSession(awsConfig)
 	if err != nil {
 		fmt.Printf("aws session error: %s\n", err.Error())
 		os.Exit(1)
@@ -95,7 +98,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("request: %s", r.URL.Path)
+	log.Printf("request: %s\n", r.URL.Path)
 
 	// Let's handle resize of local files
 	query := r.URL.Query()
@@ -131,6 +134,7 @@ func (s *Service) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		http.Redirect(w, r, url, http.StatusFound)
+		return
 	}
 
 	w.WriteHeader(http.StatusNotFound)
