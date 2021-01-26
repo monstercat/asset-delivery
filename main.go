@@ -1,18 +1,15 @@
 package main
 
 import (
-	"log"
 	"bytes"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/discordapp/lilliput"
-	s3util "github.com/monstercat/golib/s3"
-	"io/ioutil"
+	"image"
+	"image/jpeg"
+	"image/png"
+	"io"
+	"log"
 	"mime"
 	"net/http"
 	"os"
@@ -20,9 +17,19 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
+	s3util "github.com/monstercat/golib/s3"
+	"github.com/nfnt/resize"
 )
 
-const MaxSize = 4096
+const MaxImageDimension = 4096
+
+var ErrFileNotHandled = errors.New("file type not handled")
+var ErrInvalidBounds = errors.New("invalid image bounds")
 
 type Service struct {
 	Session *session.Session
@@ -53,12 +60,11 @@ func (s *Service) GetAssetPath(str string) string {
 
 func main () {
 	s := &Service{}
-	var port int
-
-	flag.IntVar(&port, "p", 80, "The port to utilize for HTTP")
-	flag.StringVar(&s.Bucket, "b", "", "S3 bucket to put cached images")
+	var address string
+	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
+	flag.StringVar(&s.Bucket, "bucket", "", "S3 bucket to put cached images")
 	flag.StringVar(&s.AssetDir, "dir", ".", "The asset directory to serve")
-	flag.StringVar(&s.ClearCode, "code", "itscooltorefreshwithbudlight", "The code to use to delete a cached resized image.")
+	flag.StringVar(&s.ClearCode, "cache-code", "itscooltorefreshwithbudlight", "The code to use to delete a cached resized image.")
 	flag.Parse()
 
 	var err error
@@ -73,7 +79,7 @@ func main () {
 	}
 
 	log.Println("Opening HTTP server")
-	err = http.ListenAndServe(fmt.Sprintf(":%d", port), s)
+	err = http.ListenAndServe(address, s)
 	if err != nil {
 		fmt.Printf("issue opening server: %s\n", err.Error())
 		os.Exit(1)
@@ -85,8 +91,8 @@ func parseSize(str string) (uint64, error) {
 	if err != nil {
 		return 0, errors.New("bad image size provided")
 	}
-	if size > MaxSize {
-		return 0, errors.New(fmt.Sprintf(`image size cannot exceed %d`, MaxSize))
+	if size > MaxImageDimension {
+		return 0, errors.New(fmt.Sprintf(`image size cannot exceed %d`, MaxImageDimension))
 	}
 	return size, nil
 }
@@ -159,52 +165,57 @@ func cacheAndServe(s *Service, filename string, size uint64) (string, error) {
 	} else if ok {
 		return s.MkURL(key), nil
 	}
-
-	// Let's resize the image, serve it, and cache it
-	reader, err := os.Open(s.GetAssetPath(filename))
+	img, err := OpenImage(s.GetAssetPath(filename))
 	if err != nil {
 		return "", err
 	}
-	defer reader.Close()
-
-	buf, err := ioutil.ReadAll(reader)
+	bounds := img.Bounds()
+	width := bounds.Max.X
+	height := bounds.Max.Y
+	if bounds.Max.X <= 0 {
+		return "", ErrInvalidBounds
+	}
+	ratio := float64(bounds.Max.Y) / float64(bounds.Max.X)
+	height = int(float64(size) * ratio)
+	width = int(size)
+	img = resize.Resize(uint(width), uint(height), img, resize.Bicubic)
+	buf, err := ImageToBytes(img, filepath.Ext(filename))
 	if err != nil {
 		return "", err
 	}
-
-	decoder, err := lilliput.NewDecoder(buf)
-	if err != nil {
-		return "", err
-	}
-	defer decoder.Close()
-
-	header, err := decoder.Header()
-	if err != nil {
-		return "", err
-	}
-
-	var ratio float64
-	if header.Width() <= 0 {
-		ratio = 1
-	} else {
-		ratio = float64(header.Height()) / float64(header.Width())
-	}
-
-	ops := lilliput.NewImageOps(MaxSize)
-	defer ops.Close()
-
-	img := make([]byte, 50*1024*1024)
-	opts := &lilliput.ImageOptions{
-		FileType:     "." + strings.ToLower(decoder.Description()),
-		Width:        int(size),
-		Height:       int(float64(size) * ratio),
-		ResizeMethod: lilliput.ImageOpsResize,
-	}
-	img, err = ops.Transform(decoder, opts, img)
-	if err != nil {
-		return "", err
-	}
-
-	err = s3util.UploadS3(s, bytes.NewReader(img), mime.TypeByExtension(filepath.Ext(filename)), s3.BucketCannedACLPublicRead, key)
+	err = s3util.UploadS3(s, buf, mime.TypeByExtension(filepath.Ext(filename)), s3.BucketCannedACLPublicRead, key)
 	return s.MkURL(key), err
+}
+
+func ImageToBytes(i image.Image, ext string) (*bytes.Buffer, error) {
+	buf := bytes.NewBuffer([]byte{})
+	var err error
+	switch ext {
+	case ".jpeg", ".jfif", ".jpg":
+		err = jpeg.Encode(buf, i, &jpeg.Options{Quality: 100})
+	case ".png":
+		err = png.Encode(buf, i)
+	default:
+		err = ErrFileNotHandled
+	}
+	return buf, err
+}
+
+func OpenImage(p string) (image.Image, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	ext := strings.ToLower(filepath.Ext(p))
+	var fn func(io.Reader) (image.Image, error)
+	switch ext {
+	case ".jpeg", ".jfif", ".jpg":
+		fn = jpeg.Decode
+	case ".png":
+		fn = png.Decode
+	}
+	if fn == nil {
+		return nil, ErrFileNotHandled
+	}
+	return fn(f)
 }
