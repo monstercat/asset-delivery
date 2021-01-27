@@ -206,6 +206,7 @@ func OpenImage(p string) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 	ext := strings.ToLower(filepath.Ext(p))
 	var fn func(io.Reader) (image.Image, error)
 	switch ext {
