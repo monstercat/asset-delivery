@@ -30,7 +30,7 @@ func (fs *GCloudFileSystem) ObjectURL(filename string) string {
 	} else {
 		protocol = "http"
 	}
-	return path.Join(fmt.Sprintf("%s://storage.googleapis.com", protocol), fs.Bucket, filename)
+	return fmt.Sprintf("%s://%s", protocol, path.Join("storage.googleapis.com", fs.Bucket, filename))
 }
 
 func (fs *GCloudFileSystem) Exists(filename string) (bool, error) {
