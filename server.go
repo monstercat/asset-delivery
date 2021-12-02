@@ -26,12 +26,12 @@ type Server struct {
 }
 
 type ResizeOptions struct {
-	Width uint64
+	Width    uint64
 	Location string
 	HashSum  string
 	Encoding string
-	Prefix string
-	Force  bool
+	Prefix   string
+	Force    bool
 }
 
 func (opts *ResizeOptions) ObjectKey() string {
@@ -160,7 +160,7 @@ func (i *WriteInfo) CacheControl() string {
 	return i.cacheControl
 }
 
-func GetImage(url string) ([]byte, string, error){
+func GetImage(url string) ([]byte, string, error) {
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
@@ -199,7 +199,14 @@ func ReaderToImage(r io.Reader, hint string) (image.Image, error) {
 	default:
 		fn = func(r io.Reader) (image.Image, error) {
 			img, _, err := image.Decode(r)
-			return img, err
+			if err != nil {
+				return nil, &ParamError{
+					Param:     "url",
+					RootError: err,
+					Detail:    "Unsupported image format",
+				}
+			}
+			return img, nil
 		}
 	}
 	return fn(r)
