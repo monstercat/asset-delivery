@@ -2,25 +2,21 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/option"
 )
 
-const MaxImageDimension = 4096
-
-var ErrFileNotHandled = errors.New("file type not handled")
-var ErrInvalidBounds = errors.New("invalid image bounds")
-
 func main() {
-	var address, credsFilename string
+	var address, credsFilename, allowedHosts string
 	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
 	flag.StringVar(&credsFilename, "credentials", "/secrets/google.json", "The location of the Google JWT file.")
+	flag.StringVar(&allowedHosts, "allow", "", "A comma separated list of domain hosts. An empty value allows any.")
 	flag.Parse()
 
 	fs, err := NewGCloudFileSystem(credsFilename)
@@ -29,7 +25,8 @@ func main() {
 	}
 
 	server := &Server{
-		FS: fs,
+		FS:             fs,
+		PermittedHosts: strings.Split(allowedHosts, ","),
 	}
 	err = http.ListenAndServe(address, server)
 	if err != nil {

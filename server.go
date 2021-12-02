@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"crypto/sha1"
 	"errors"
 	"fmt"
 	"image"
@@ -21,76 +20,26 @@ import (
 	"github.com/marcw/cachecontrol"
 )
 
+const MaxImageDimension = 4096
+
+var ErrFileNotHandled = errors.New("file type not handled")
+var ErrInvalidBounds = errors.New("invalid image bounds")
+
 type Server struct {
 	FS FileSystem
+	PermittedHosts []string
 }
 
-type ResizeOptions struct {
-	Width    uint64
-	Location string
-	HashSum  string
-	Encoding string
-	Prefix   string
-	Force    bool
-}
-
-func (opts *ResizeOptions) ObjectKey() string {
-	return fmt.Sprintf("%s/%s/%d%s", opts.Prefix, opts.HashSum, opts.Width, opts.DesiredEncoding())
-}
-
-func (opts *ResizeOptions) DesiredEncoding() string {
-	if len(opts.Encoding) > 0 {
-		return "." + opts.Encoding
+func (s *Server) HostPermitted(host string) bool {
+	if len(s.PermittedHosts) == 0 {
+		return true
 	}
-	return filepath.Ext(opts.Location)
-}
-
-func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
-	var opts ResizeOptions
-	if xs, ok := m["width"]; ok {
-		var err error
-		opts.Width, err = parseUint(xs[0])
-		if err != nil {
-			return opts, &ParamError{Param: "width", Detail: "Invalid value."}
-		}
-		if opts.Width <= 0 || opts.Width > MaxImageDimension {
-			return opts, &ParamError{Param: "width", Detail: "Expected a width greater than 0 and less than 4096."}
+	for _, x := range s.PermittedHosts {
+		if strings.TrimSpace(x) == host {
+			return true
 		}
 	}
-	if xs, ok := m["url"]; ok {
-		opts.Location = strings.TrimSpace(xs[0])
-	}
-	if opts.Location == "" {
-		return opts, &ParamError{Param: "url", Detail: "Invalid (or missing) URL."}
-	} else {
-		hash := sha1.New()
-		hash.Write([]byte(opts.Location))
-		sum := hash.Sum(nil)
-		opts.HashSum = fmt.Sprintf("%x", sum)
-		// TODO validate location param, we'll just let HTTP request validate for now
-	}
-	if _, ok := m["force"]; ok {
-		opts.Force = true
-	}
-
-	if xs, ok := m["encoding"]; ok {
-		opts.Encoding = strings.TrimSpace(xs[0])
-		// TODO validate encoding param, we'll let image encoder default for now
-	}
-	return opts, nil
-}
-
-func WriteError(w http.ResponseWriter, err error) {
-	status := http.StatusInternalServerError
-	if v, ok := err.(HTTPError); ok {
-		status = v.Status()
-	}
-	w.WriteHeader(status)
-	w.Write([]byte(err.Error()))
-
-	if v, ok := err.(RootError); ok && v.Root() != nil {
-		log.Println(v.Root())
-	}
+	return false
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -104,6 +53,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	opts.Prefix = "resized"
+
+	if !s.HostPermitted(opts.URL.Host) {
+		WriteError(w, &ParamError{Param: "url", Detail: "Host is not permitted to perform this action."})
+		return
+	}
 	if err := s.Resize(opts); err != nil {
 		WriteError(w, err)
 		return
@@ -160,6 +114,19 @@ func (i *WriteInfo) CacheControl() string {
 	return i.cacheControl
 }
 
+func WriteError(w http.ResponseWriter, err error) {
+	status := http.StatusInternalServerError
+	if v, ok := err.(HTTPError); ok {
+		status = v.Status()
+	}
+	w.WriteHeader(status)
+	w.Write([]byte(err.Error()))
+
+	if v, ok := err.(RootError); ok && v.Root() != nil {
+		log.Println(v.Root())
+	}
+}
+
 func GetImage(url string) ([]byte, string, error) {
 	client := http.Client{
 		Timeout: time.Second * 5,
@@ -203,7 +170,7 @@ func ReaderToImage(r io.Reader, hint string) (image.Image, error) {
 				return nil, &ParamError{
 					Param:     "url",
 					RootError: err,
-					Detail:    "Unsupported image format",
+					Detail:    "Unsupported image format.",
 				}
 			}
 			return img, nil
