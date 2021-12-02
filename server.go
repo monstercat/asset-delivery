@@ -18,6 +18,7 @@ import (
 
 	"github.com/chai2010/webp"
 	"github.com/disintegration/imaging"
+	"github.com/marcw/cachecontrol"
 )
 
 type Server struct {
@@ -29,7 +30,8 @@ type ResizeOptions struct {
 	Location string
 	HashSum  string
 	Encoding string
-	Prefix   string
+	Prefix string
+	Force  bool
 }
 
 func (opts *ResizeOptions) ObjectKey() string {
@@ -67,6 +69,9 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
 		opts.HashSum = fmt.Sprintf("%x", sum)
 		// TODO validate location param, we'll just let HTTP request validate for now
 	}
+	if _, ok := m["force"]; ok {
+		opts.Force = true
+	}
 
 	if xs, ok := m["encoding"]; ok {
 		opts.Encoding = strings.TrimSpace(xs[0])
@@ -103,17 +108,29 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, err)
 		return
 	}
-	http.Redirect(w, r, s.FS.ObjectURL(opts.ObjectKey()), http.StatusPermanentRedirect)
+	newLoc := s.FS.ObjectURL(opts.ObjectKey())
+	http.Redirect(w, r, newLoc, http.StatusPermanentRedirect)
+}
+
+func isExpired(info FileInfo) bool {
+	control := cachecontrol.Parse(info.CacheControl())
+	if control.MaxAge() <= 0 {
+		return false
+	}
+	return time.Now().After(info.Created().Add(control.MaxAge()))
 }
 
 func (s *Server) Resize(opts ResizeOptions) error {
-	ok, err := s.FS.Exists(opts.ObjectKey())
-	if err != nil {
-		return &SystemError{RootError: err, Detail: "Could not check if image already exists."}
-	} else if ok {
-		return nil
+	// If we are not forced to cache, let's check if it exists.
+	if !opts.Force {
+		info, err := s.FS.Info(opts.ObjectKey())
+		if err != nil && err != ErrNoFile {
+			return &SystemError{RootError: err, Detail: "Could not check if image already exists."}
+		} else if info != nil && !isExpired(info) {
+			return nil
+		}
 	}
-	buf, err := GetImage(opts.Location)
+	buf, cc, err := GetImage(opts.Location)
 	if err != nil {
 		return &ParamError{Param: "url", Detail: fmt.Sprintf("Could not get image: %s", opts.Location), RootError: err}
 	}
@@ -129,22 +146,31 @@ func (s *Server) Resize(opts ResizeOptions) error {
 	if err != nil {
 		return &SystemError{Detail: "An error occurred.", RootError: err}
 	}
-	if err := s.FS.Write(opts.ObjectKey(), bits); err != nil {
+	if err := s.FS.Write(opts.ObjectKey(), bits, &WriteInfo{cacheControl: cc}); err != nil {
 		return &SystemError{Detail: "An error occurred.", RootError: err}
 	}
 	return nil
 }
 
-func GetImage(url string) ([]byte, error){
+type WriteInfo struct {
+	cacheControl string
+}
+
+func (i *WriteInfo) CacheControl() string {
+	return i.cacheControl
+}
+
+func GetImage(url string) ([]byte, string, error){
 	client := http.Client{
 		Timeout: time.Second * 5,
 	}
 	res, err := client.Get(url)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer res.Body.Close()
-	return io.ReadAll(res.Body)
+	buf, err := io.ReadAll(res.Body)
+	return buf, res.Header.Get("Cache-Control"), err
 }
 
 func ResizeImage(img image.Image, target uint64) (image.Image, error) {

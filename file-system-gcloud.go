@@ -5,9 +5,22 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"time"
 
 	"cloud.google.com/go/storage"
 )
+
+type GCloudFileInfo struct {
+	attributes storage.ReaderObjectAttrs
+}
+
+func (i *GCloudFileInfo) CacheControl() string {
+	return i.attributes.CacheControl
+}
+
+func (i *GCloudFileInfo) Created() time.Time {
+	return i.attributes.LastModified
+}
 
 type GCloudFileSystem struct {
 	Client *storage.Client
@@ -33,16 +46,16 @@ func (fs *GCloudFileSystem) ObjectURL(filename string) string {
 	return fmt.Sprintf("%s://%s", protocol, path.Join("storage.googleapis.com", fs.Bucket, filename))
 }
 
-func (fs *GCloudFileSystem) Exists(filename string) (bool, error) {
+func (fs *GCloudFileSystem) Info(filename string) (FileInfo, error) {
 	handle := fs.Client.Bucket(fs.Bucket).Object(filename)
 	r, err := handle.NewReader(context.Background())
 	if err == storage.ErrObjectNotExist {
-		return false, nil
-	} else if err != nil {
-		return false, err
+		return nil, ErrNoFile
 	}
-	r.Close()
-	return true, nil
+	if err != nil {
+		return nil, err
+	}
+	return &GCloudFileInfo{r.Attrs}, nil
 }
 
 func (fs *GCloudFileSystem) ReadCloser(filename string) (io.ReadCloser, error) {
@@ -51,10 +64,10 @@ func (fs *GCloudFileSystem) ReadCloser(filename string) (io.ReadCloser, error) {
 	return r, err
 }
 
-func (fs *GCloudFileSystem) Write(filename string, r io.Reader) error {
-	fmt.Println("IM WRITING")
+func (fs *GCloudFileSystem) Write(filename string, r io.Reader, info FileInfoWrite) error {
 	handle := fs.Client.Bucket(fs.Bucket).Object(filename)
 	w := handle.NewWriter(context.Background())
+	w.CacheControl = info.CacheControl()
 	defer w.Close()
 	_, err := io.Copy(w, r)
 	return err
