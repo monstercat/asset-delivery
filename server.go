@@ -196,9 +196,11 @@ func ReaderToImage(r io.Reader, hint string) (image.Image, error) {
 		fn = png.Decode
 	case ".webp":
 		fn = webp.Decode
-	}
-	if fn == nil {
-		return nil, ErrFileNotHandled
+	default:
+		fn = func(r io.Reader) (image.Image, error) {
+			img, _, err := image.Decode(r)
+			return img, err
+		}
 	}
 	return fn(r)
 }
