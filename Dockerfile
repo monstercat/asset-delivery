@@ -1,6 +1,7 @@
 FROM golang:alpine3.15
 EXPOSE 80
-ENV GCLOUD_BUCKET=minicat
+ENV BUCKET="minicat"
+ENV HOST=""
 RUN apk add build-base
 WORKDIR src/github.com/monstercat/asset-delivery
 ADD . .

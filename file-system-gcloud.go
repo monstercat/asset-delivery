@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"path"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/storage"
@@ -24,26 +24,24 @@ func (i *GCloudFileInfo) Created() time.Time {
 
 type GCloudFileSystem struct {
 	Client *storage.Client
-	Secure bool
+	Host   string
 	Bucket string
 }
 
 func (fs *GCloudFileSystem) FromVolume(name string) FileSystem {
 	return &GCloudFileSystem{
 		Client: fs.Client,
-		Secure: fs.Secure,
+		Host:   fs.Host,
 		Bucket: name,
 	}
 }
 
 func (fs *GCloudFileSystem) ObjectURL(filename string) string {
-	var protocol string
-	if fs.Secure {
-		protocol = "https"
-	} else {
-		protocol = "http"
+	host := strings.TrimSpace(fs.Host)
+	if host == "" {
+		host = "https://storage.googleapis.com/" + fs.Bucket
 	}
-	return fmt.Sprintf("%s://%s", protocol, path.Join("storage.googleapis.com", fs.Bucket, filename))
+	return host + path.Join("/", filename)
 }
 
 func (fs *GCloudFileSystem) Info(filename string) (FileInfo, error) {

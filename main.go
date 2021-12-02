@@ -45,7 +45,7 @@ func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
 	}
 	return &GCloudFileSystem{
 		Client: client,
-		Bucket: os.Getenv("GCLOUD_BUCKET"),
-		Secure: true,
+		Bucket: os.Getenv("BUCKET"),
+		Host:   os.Getenv("HOST"),
 	}, nil
 }
