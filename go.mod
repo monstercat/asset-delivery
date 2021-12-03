@@ -4,6 +4,7 @@ go 1.16
 
 require (
 	cloud.google.com/go/kms v1.1.0 // indirect
+	cloud.google.com/go/logging v1.4.2
 	cloud.google.com/go/pubsub v1.3.1
 	cloud.google.com/go/storage v1.18.2
 	github.com/chai2010/webp v1.1.0
