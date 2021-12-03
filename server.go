@@ -68,8 +68,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go func() {
-		err := s.Resize(opts)
-		log.Printf("Error resizing requested image [%s]: %s", opts.Location, err.Error())
+		if err := s.Resize(opts); err != nil {
+			log.Printf("Error resizing requested image [%s]: %s", opts.Location, err.Error())
+		}
 	}()
 	http.Redirect(w, r, opts.Location, http.StatusTemporaryRedirect)
 }
