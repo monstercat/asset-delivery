@@ -24,7 +24,7 @@ func (err *SystemError) Status() int {
 }
 
 func (err *SystemError) Error() string {
-	return err.Detail + ". " + err.RootError.Error()
+	return err.Detail
 }
 
 func (err *SystemError) Root() error {
@@ -42,7 +42,7 @@ func (err *ParamError) Status() int {
 }
 
 func (err *ParamError) Error() string {
-	return fmt.Sprintf("Bad parameter provided '%s'. %s. %s", err.Param, err.Detail, err.RootError.Error())
+	return fmt.Sprintf("Bad parameter provided '%s'. %s.", err.Param, err.Detail)
 }
 
 func (err *ParamError) Root() error {
