@@ -7,5 +7,5 @@ RUN apk add build-base
 WORKDIR src/github.com/monstercat/asset-delivery
 ADD . .
 RUN go get .
-RUN go build -o delivery
+RUN go build ./cmd/delivery -o delivery
 CMD ./delivery -allow "$ALLOW"

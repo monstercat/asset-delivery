@@ -1,21 +1,29 @@
-package main
+package asset_delivery
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
+
+const MaxImageDimension = 4096
 
 type ResizeOptions struct {
 	Width    uint64
 	Location string
-	URL      *url.URL
 	HashSum  string
 	Encoding string
 	Prefix   string
-	Force    bool
+}
+
+type ResizeOptionsProcessed struct {
+	ResizeOptions
+	URL   *url.URL
+	Force bool
 }
 
 func (opts *ResizeOptions) ObjectKey() string {
@@ -29,8 +37,8 @@ func (opts *ResizeOptions) DesiredEncoding() string {
 	return filepath.Ext(opts.Location)
 }
 
-func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
-	var opts ResizeOptions
+func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptionsProcessed, error) {
+	var opts ResizeOptionsProcessed
 	if xs, ok := m["width"]; ok {
 		var err error
 		opts.Width, err = parseUint(xs[0])
@@ -67,4 +75,20 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
 		// TODO validate encoding param, we'll let image encoder default for now
 	}
 	return opts, nil
+}
+
+func parseUint(str string) (uint64, error) {
+	size, err := strconv.ParseUint(str, 10, 32)
+	if err != nil {
+		return 0, errors.New("bad image size provided")
+	}
+	return size, nil
+}
+
+type WriteInfo struct {
+	cacheControl string
+}
+
+func (i *WriteInfo) CacheControl() string {
+	return i.cacheControl
 }

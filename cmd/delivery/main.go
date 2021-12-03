@@ -8,15 +8,19 @@ import (
 	"os"
 	"strings"
 
+	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/option"
+
+	. "github.com/monstercat/asset-delivery"
 )
 
 func main() {
-	var address, credsFilename, allowedHosts string
+	var address, credsFilename, allowedHosts, projectId string
 	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
 	flag.StringVar(&credsFilename, "credentials", "/secrets/google.json", "The location of the Google JWT file.")
 	flag.StringVar(&allowedHosts, "allow", "", "A comma separated list of domain hosts. An empty value allows any.")
+	flag.StringVar(&projectId, "project-id", "", "Project ID")
 	flag.Parse()
 
 	fs, err := NewGCloudFileSystem(credsFilename)
@@ -24,9 +28,16 @@ func main() {
 		log.Fatalf("Failed to create file system: %s", err.Error())
 	}
 
+	pb, err := NewGooglePubSub(credsFilename, projectId)
+	if err != nil {
+		log.Fatalf("Failed to create connectiont to pubsub: %s", err.Error())
+	}
+
 	server := &Server{
 		FS:             fs,
+		PB:             pb,
 		PermittedHosts: strings.Split(allowedHosts, ","),
+		Prefix:         "resized",
 	}
 	err = http.ListenAndServe(address, server)
 	if err != nil {
@@ -45,4 +56,13 @@ func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
 		Bucket: os.Getenv("BUCKET"),
 		Host:   os.Getenv("HOST"),
 	}, nil
+}
+
+func NewGooglePubSub(filename, projectId string) (*pubsub.Client, error) {
+	opts := option.WithCredentialsFile(filename)
+	return pubsub.NewClient(
+		context.Background(),
+		"projects/"+projectId,
+		opts,
+	)
 }
