@@ -9,7 +9,9 @@ import (
 	"net/http"
 	"os"
 
+	"cloud.google.com/go/logging"
 	"cloud.google.com/go/storage"
+	"github.com/monstercat/golib/logger"
 	"google.golang.org/api/option"
 
 	. "github.com/monstercat/asset-delivery"
@@ -17,14 +19,20 @@ import (
 
 // Resize does the actual resizing operation after receiving a request from PubSub.
 func main() {
-	var address, credsFilename string
+	var address, credsFilename, projectId string
 	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
 	flag.StringVar(&credsFilename, "credentials", "/secrets/google.json", "The location of the Google JWT file.")
+	flag.StringVar(&projectId, "project-id", "", "Project ID")
 	flag.Parse()
 
 	fs, err := NewGCloudFileSystem(credsFilename)
 	if err != nil {
 		log.Fatalf("Failed to create file system: %s", err.Error())
+	}
+
+	cloudLogger, err := NewGCloudLogger(credsFilename, projectId, "asset-delivery")
+	if err != nil {
+		log.Fatalf("Failed to create connection to logger: %s", err.Error())
 	}
 
 	// Currently, this command creates an HTTP server that expects a PubSub request as the body of the message.
@@ -41,9 +49,19 @@ func main() {
 			return
 		}
 
+		l := &logger.Contextual{
+			Logger:  cloudLogger,
+			Context: m.Message.Data,
+		}
+
 		// Calculate hashSum
 		m.Message.Data.PopulateHash()
 		if err := Resize(fs, m.Message.Data); err != nil {
+			if v, ok := err.(RootError); ok && v.Root() != nil {
+				l.Log(logger.SeverityError, "Could not resize image: "+err.Error()+"; "+v.Root().Error())
+			} else {
+				l.Log(logger.SeverityError, "Could not resize image: "+err.Error())
+			}
 			WriteError(w, err)
 			return
 		}
@@ -68,4 +86,13 @@ func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
 		Bucket: os.Getenv("BUCKET"),
 		Host:   os.Getenv("HOST"),
 	}, nil
+}
+
+func NewGCloudLogger(filename, project, name string) (*logger.Google, error) {
+	opts := option.WithCredentialsFile(filename)
+	client, err := logging.NewClient(context.Background(), "projects/"+project, opts)
+	if err != nil {
+		return nil, err
+	}
+	return logger.NewGoogle(client, name), nil
 }
