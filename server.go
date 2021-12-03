@@ -58,12 +58,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, &ParamError{Param: "url", Detail: "Host is not permitted to perform this action."})
 		return
 	}
-	if err := s.Resize(opts); err != nil {
+	need, err := s.NeedsResizing(opts)
+	if err != nil {
 		WriteError(w, err)
 		return
 	}
-	newLoc := s.FS.ObjectURL(opts.ObjectKey())
-	http.Redirect(w, r, newLoc, http.StatusPermanentRedirect)
+	if !need {
+		http.Redirect(w, r, s.FS.ObjectURL(opts.ObjectKey()), http.StatusPermanentRedirect)
+		return
+	}
+	go func() {
+		err := s.Resize(opts)
+		log.Println("Error resizing requested image: ", err.Error())
+	}()
+	http.Redirect(w, r, opts.Location, http.StatusTemporaryRedirect)
 }
 
 func isExpired(info FileInfo) bool {
@@ -74,16 +82,20 @@ func isExpired(info FileInfo) bool {
 	return time.Now().After(info.Created().Add(control.MaxAge()))
 }
 
-func (s *Server) Resize(opts ResizeOptions) error {
-	// If we are not forced to cache, let's check if it exists.
-	if !opts.Force {
-		info, err := s.FS.Info(opts.ObjectKey())
-		if err != nil && err != ErrNoFile {
-			return &SystemError{RootError: err, Detail: "Could not check if image already exists."}
-		} else if info != nil && !isExpired(info) {
-			return nil
-		}
+func (s *Server) NeedsResizing(opts ResizeOptions) (bool, error) {
+	if opts.Force {
+		return true, nil
 	}
+	info, err := s.FS.Info(opts.ObjectKey())
+	if err != nil && err != ErrNoFile {
+		return false, &SystemError{RootError: err, Detail: "Could not check if image already exists."}
+	} else if info != nil && !isExpired(info) {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (s *Server) Resize(opts ResizeOptions) error {
 	buf, cc, err := GetImage(opts.Location)
 	if err != nil {
 		return &ParamError{Param: "url", Detail: fmt.Sprintf("Could not get image: %s", opts.Location), RootError: err}
