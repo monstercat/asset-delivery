@@ -8,8 +8,10 @@ import (
 	"os"
 	"strings"
 
+	"cloud.google.com/go/logging"
 	"cloud.google.com/go/pubsub"
 	"cloud.google.com/go/storage"
+	"github.com/monstercat/golib/logger"
 	"google.golang.org/api/option"
 
 	. "github.com/monstercat/asset-delivery"
@@ -32,11 +34,17 @@ func main() {
 
 	pb, err := NewGCloudPubSub(credsFilename, projectId)
 	if err != nil {
-		log.Fatalf("Failed to create connectiont to pubsub: %s", err.Error())
+		log.Fatalf("Failed to create connection to pubsub: %s", err.Error())
 	}
 	defer pb.Close()
 
+	cloudLogger, err := NewGCloudLogger(credsFilename, projectId, "asset-delivery")
+	if err != nil {
+		log.Fatalf("Failed to create connection to logger: %s", err.Error())
+	}
+
 	server := &Server{
+		Logger:         cloudLogger,
 		FS:             fs,
 		PB:             pb,
 		PermittedHosts: strings.Split(allowedHosts, ","),
@@ -46,6 +54,15 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to start listening on %s: %s", address, err.Error())
 	}
+}
+
+func NewGCloudLogger(filename, project, name string) (*logger.Google, error) {
+	opts := option.WithCredentialsFile(filename)
+	client, err := logging.NewClient(context.Background(), "projects/"+project, opts)
+	if err != nil {
+		return nil, err
+	}
+	return logger.NewGoogle(client, name), nil
 }
 
 func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
