@@ -26,6 +26,13 @@ type ResizeOptionsProcessed struct {
 	Force bool
 }
 
+func (opts *ResizeOptions) PopulateHash() {
+	hash := sha1.New()
+	hash.Write([]byte(opts.Location))
+	sum := hash.Sum(nil)
+	opts.HashSum = fmt.Sprintf("%x", sum)
+}
+
 func (opts *ResizeOptions) ObjectKey() string {
 	return fmt.Sprintf("%s/%s/%d%s", opts.Prefix, opts.HashSum, opts.Width, opts.DesiredEncoding())
 }
@@ -60,11 +67,7 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptionsProcessed, e
 	if opts.Location == "" {
 		return opts, &ParamError{Param: "url", Detail: "Invalid (or missing) URL."}
 	} else {
-		hash := sha1.New()
-		hash.Write([]byte(opts.Location))
-		sum := hash.Sum(nil)
-		opts.HashSum = fmt.Sprintf("%x", sum)
-		// TODO validate location param, we'll just let HTTP request validate for now
+		opts.PopulateHash()
 	}
 	if _, ok := m["force"]; ok {
 		opts.Force = true

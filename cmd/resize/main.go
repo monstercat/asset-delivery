@@ -40,6 +40,9 @@ func main() {
 			WriteError(w, &ParamError{Param: "body", Detail: "could not unmarshal body", RootError: err})
 			return
 		}
+
+		// Calculate hashSum
+		m.Message.Data.PopulateHash()
 		if err := Resize(fs, m.Message.Data); err != nil {
 			WriteError(w, err)
 			return
