@@ -1,14 +1,12 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
 	"time"
 
-	"cloud.google.com/go/pubsub"
 	"github.com/marcw/cachecontrol"
 
 	. "github.com/monstercat/asset-delivery"
@@ -16,7 +14,7 @@ import (
 
 type Server struct {
 	FS             FileSystem
-	PB             *pubsub.Client
+	PB             Publisher
 	PermittedHosts []string
 	Prefix         string
 }
@@ -65,6 +63,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, opts.Location, http.StatusTemporaryRedirect)
 }
 
+// sendResize sends the resize commands quietly.
 func (s *Server) sendResize(opts ResizeOptions) {
 	// Send resize request
 	b, err := json.Marshal(opts)
@@ -72,15 +71,10 @@ func (s *Server) sendResize(opts ResizeOptions) {
 		log.Printf("Could not marshal resize options. %s", err)
 		return
 	}
-
-	// Publish Immediately.
-	topic := s.PB.Topic(ResizeTopic)
-	topic.PublishSettings.DelayThreshold = 0
-	topic.PublishSettings.CountThreshold = 0
-
-	topic.Publish(context.Background(), &pubsub.Message{
-		Data: b,
-	})
+	if err := s.PB.Publish(ResizeTopic, b); err != nil {
+		log.Printf("Could not send resize command. %s", err)
+		return
+	}
 }
 
 func isExpired(info FileInfo) bool {

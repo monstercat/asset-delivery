@@ -28,10 +28,13 @@ func main() {
 		log.Fatalf("Failed to create file system: %s", err.Error())
 	}
 
-	pb, err := NewGooglePubSub(credsFilename, projectId)
+	log.Print("Project ID: ", projectId)
+
+	pb, err := NewGCloudPubSub(credsFilename, projectId)
 	if err != nil {
 		log.Fatalf("Failed to create connectiont to pubsub: %s", err.Error())
 	}
+	defer pb.Close()
 
 	server := &Server{
 		FS:             fs,
@@ -58,11 +61,17 @@ func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
 	}, nil
 }
 
-func NewGooglePubSub(filename, projectId string) (*pubsub.Client, error) {
+func NewGCloudPubSub(filename, projectId string) (*GCloudPubSub, error) {
 	opts := option.WithCredentialsFile(filename)
-	return pubsub.NewClient(
+	client, err := pubsub.NewClient(
 		context.Background(),
 		"projects/"+projectId,
 		opts,
 	)
+	if err != nil {
+		return nil, err
+	}
+	return &GCloudPubSub{
+		Client: client,
+	}, nil
 }

@@ -7,5 +7,5 @@ RUN apk add build-base
 WORKDIR src/github.com/monstercat/asset-delivery
 ADD . .
 RUN go get .
-RUN go build ./cmd/resize -o resize
+RUN go build -o resize ./cmd/resize/
 CMD ./resize
