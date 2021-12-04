@@ -38,6 +38,8 @@ func main() {
 	// Currently, this command creates an HTTP server that expects a PubSub request as the body of the message.
 	// TODO: by flag, decide to use an HTTP server, or a subscription directly on pubsub.
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		cloudLogger.Log(logger.SeverityInfo, "Received http request")
+
 		var m PubSubMessage
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
@@ -56,6 +58,8 @@ func main() {
 
 		// Calculate hashSum
 		m.Message.Data.PopulateHash()
+
+		l.Log(logger.SeverityInfo, "Received request to resize")
 		if err := Resize(fs, m.Message.Data); err != nil {
 			if v, ok := err.(RootError); ok && v.Root() != nil {
 				l.Log(logger.SeverityError, "Could not resize image: "+err.Error()+"; "+v.Root().Error())

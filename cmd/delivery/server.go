@@ -87,10 +87,12 @@ func (s *Server) sendResize(opts ResizeOptions) {
 		l.Log(logger.SeverityError, fmt.Sprintf("Could not marshal resize options. %s", err))
 		return
 	}
+	l.Log(logger.SeverityInfo, "Sending resize request on " + ResizeTopic)
 	if err := s.PB.Publish(ResizeTopic, b); err != nil {
 		l.Log(logger.SeverityError, fmt.Sprintf("Could not send resize command. %s", err))
 		return
 	}
+	l.Log(logger.SeverityInfo, "Resize request sent " + ResizeTopic)
 }
 
 func isExpired(info FileInfo) bool {
