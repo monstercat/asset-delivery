@@ -30,6 +30,8 @@ func main() {
 		log.Fatalf("Failed to create file system: %s", err.Error())
 	}
 
+	log.Print("Project ID: ", projectId)
+
 	cloudLogger, err := NewGCloudLogger(credsFilename, projectId, "asset-delivery")
 	if err != nil {
 		log.Fatalf("Failed to create connection to logger: %s", err.Error())
