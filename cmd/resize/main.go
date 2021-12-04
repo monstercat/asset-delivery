@@ -96,7 +96,7 @@ func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
 
 func NewGCloudLogger(filename, project, name string) (*logger.Google, error) {
 	opts := option.WithCredentialsFile(filename)
-	client, err := logging.NewClient(context.Background(), "projects/"+project, opts)
+	client, err := logging.NewClient(context.Background(), project, opts)
 	if err != nil {
 		return nil, err
 	}

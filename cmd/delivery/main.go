@@ -58,7 +58,7 @@ func main() {
 
 func NewGCloudLogger(filename, project, name string) (*logger.Google, error) {
 	opts := option.WithCredentialsFile(filename)
-	client, err := logging.NewClient(context.Background(), "projects/"+project, opts)
+	client, err := logging.NewClient(context.Background(), project, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func NewGCloudPubSub(filename, projectId string) (*GCloudPubSub, error) {
 	opts := option.WithCredentialsFile(filename)
 	client, err := pubsub.NewClient(
 		context.Background(),
-		"projects/"+projectId,
+		projectId,
 		opts,
 	)
 	if err != nil {
