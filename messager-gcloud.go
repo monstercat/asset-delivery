@@ -13,10 +13,11 @@ type GCloudPubSub struct {
 func (p *GCloudPubSub) Publish(subj string, data []byte) error {
 	topic := p.Topic(subj)
 	topic.PublishSettings.DelayThreshold = 0
-	topic.PublishSettings.CountThreshold = 0
+	topic.PublishSettings.CountThreshold = 1
 
-	topic.Publish(context.Background(), &pubsub.Message{
+	res := topic.Publish(context.Background(), &pubsub.Message{
 		Data: data,
 	})
-	return nil
+	_, err := res.Get(context.Background())
+	return err
 }
