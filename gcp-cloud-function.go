@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-
-	"github.com/monstercat/golib/logger"
 )
 
 // This file contains functionality to be used by GCP Cloud Functions. This file *must* be in the most top-level directory
@@ -44,28 +42,29 @@ func GcfResize(ctx context.Context, m PubSubMessage) error {
 	}
 
 	// Assumption is that creds are properly defined by default through GCP
-	cloudClient, cloudLogger, err := NewGCloudLogger(gcpProject, "asset-delivery")
-	if err != nil {
-		log.Printf("Failed to create connection to logger: %s", err.Error())
-		return err
-	}
-	defer cloudClient.Close()
+	//cloudClient, cloudLogger, err := NewGCloudLogger(gcpProject, "asset-delivery")
+	//if err != nil {
+	//	log.Printf("Failed to create connection to logger: %s", err.Error())
+	//	return err
+	//}
+	//defer cloudClient.Close()
 
-	l := &logger.Contextual{
-		Logger:  cloudLogger,
-		Context: data,
-	}
+	//l := &logger.Contextual{
+	//	Logger:  cloudLogger,
+	//	Context: data,
+	//}
 
 	// Populate the hash of the ResizeOpts
 	data.PopulateHash()
 
 	// Resize
-	l.Log(logger.SeverityInfo, "Received request to resize")
 	if err := Resize(fs, data); err != nil {
 		if v, ok := err.(RootError); ok && v.Root() != nil {
-			l.Log(logger.SeverityError, "Could not resize image: "+err.Error()+"; "+v.Root().Error())
+			log.Print("Could not resize image: "+err.Error()+"; "+v.Root().Error())
+			//l.Log(logger.SeverityError, "Could not resize image: "+err.Error()+"; "+v.Root().Error())
 		} else {
-			l.Log(logger.SeverityError, "Could not resize image: "+err.Error())
+			log.Print("Could not resize image: "+err.Error())
+			//l.Log(logger.SeverityError, "Could not resize image: "+err.Error())
 		}
 		return err
 	}
