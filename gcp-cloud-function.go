@@ -28,25 +28,28 @@ type PubSubMessage struct {
 	} `json:"message"`
 }
 
-// GCF_Resize is meant to run on Google Cloud Functions
-func GCF_Resize(ctx context.Context, m PubSubMessage) {
+// GcfResize is meant to run on Google Cloud Functions
+func GcfResize(ctx context.Context, m PubSubMessage) error {
 	log.Print("Project ID: ", gcpProject)
 
 	var data ResizeOptions
 	if err := json.Unmarshal(m.Message.Data, &data); err != nil {
-		log.Fatalf("Could not unmarshal message. %s" ,err)
+		log.Printf("Could not unmarshal message. %s" ,err)
+		return err
 	}
 
 	// Assumption is that creds are properly defined by default through GCP
 	fs, err := NewGCloudFileSystem()
 	if err != nil {
-		log.Fatalf("Failed to create file system: %s", err.Error())
+		log.Printf("Failed to create file system: %s", err.Error())
+		return err
 	}
 
 	// Assumption is that creds are properly defined by default through GCP
 	cloudClient, cloudLogger, err := NewGCloudLogger(gcpProject, "asset-delivery")
 	if err != nil {
-		log.Fatalf("Failed to create connection to logger: %s", err.Error())
+		log.Printf("Failed to create connection to logger: %s", err.Error())
+		return err
 	}
 	defer cloudClient.Close()
 
@@ -66,5 +69,8 @@ func GCF_Resize(ctx context.Context, m PubSubMessage) {
 		} else {
 			l.Log(logger.SeverityError, "Could not resize image: "+err.Error())
 		}
+		return err
 	}
+
+	return nil 
 }
