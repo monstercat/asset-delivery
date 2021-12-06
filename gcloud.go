@@ -11,12 +11,12 @@ import (
 	"google.golang.org/api/option"
 )
 
-func NewGCloudLogger(project, name string, opts ...option.ClientOption) (*logger.Google, error) {
+func NewGCloudLogger(project, name string, opts ...option.ClientOption) (*logging.Client, *logger.Google, error) {
 	client, err := logging.NewClient(context.Background(), project, opts...)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return logger.NewGoogle(client, name), nil
+	return client, logger.NewGoogle(client, name), nil
 }
 
 func NewGCloudFileSystem(opts ...option.ClientOption) (*GCloudFileSystem, error) {

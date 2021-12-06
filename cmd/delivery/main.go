@@ -11,6 +11,8 @@ import (
 	. "github.com/monstercat/asset-delivery"
 )
 
+
+
 func main() {
 	var address, credsFilename, allowedHosts, projectId string
 	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
@@ -34,10 +36,11 @@ func main() {
 	}
 	defer pb.Close()
 
-	cloudLogger, err := NewGCloudLogger(projectId, "asset-delivery", opts)
+	cloudClient, cloudLogger, err := NewGCloudLogger(projectId, "asset-delivery", opts)
 	if err != nil {
 		log.Fatalf("Failed to create connection to logger: %s", err.Error())
 	}
+	defer cloudClient.Close()
 
 	server := &Server{
 		Logger:         cloudLogger,
