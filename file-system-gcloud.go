@@ -45,7 +45,7 @@ func (fs *GCloudFileSystem) GetBucket(bucket string) *storage.BucketHandle {
 	bucketHandle := fs.Client.Bucket(fs.Bucket)
 	_, err := bucketHandle.Attrs(context.Background())
 	if err != nil {
-		log.Printf("Bucket %s does not exist.", bucket)
+		log.Printf("Bucket %s does not exist. %s", bucket, err)
 		return nil
 	}
 	fs.bucketHandle = bucketHandle
