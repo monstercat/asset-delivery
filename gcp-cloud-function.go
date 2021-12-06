@@ -1,4 +1,4 @@
-package resize
+package asset_delivery
 
 import (
 	"context"
@@ -7,14 +7,15 @@ import (
 	"os"
 
 	"github.com/monstercat/golib/logger"
-
-	. "github.com/monstercat/asset-delivery"
 )
+
+// This file contains functionality to be used by GCP Cloud Functions. This file *must* be in the most top-level directory
+// of the repo as that is where GCP can call functions from.
 
 var (
 	// GCP_PROJECT defined for the Go runtime
 	// @see https://cloud.google.com/functions/docs/configuring/env-var
-	projectId = os.Getenv("GCP_PROJECT")
+	gcpProject = os.Getenv("GCP_PROJECT")
 
 )
 
@@ -27,9 +28,9 @@ type PubSubMessage struct {
 	} `json:"message"`
 }
 
-// ResizeSubscriber is meant to run on GCP Cloud Functions
-func ResizeSubscriber(ctx context.Context, m PubSubMessage) {
-	log.Print("Project ID: ", projectId)
+// GCF_Resize is meant to run on Google Cloud Functions
+func GCF_Resize(ctx context.Context, m PubSubMessage) {
+	log.Print("Project ID: ", gcpProject)
 
 	var data ResizeOptions
 	if err := json.Unmarshal(m.Message.Data, &data); err != nil {
@@ -43,7 +44,7 @@ func ResizeSubscriber(ctx context.Context, m PubSubMessage) {
 	}
 
 	// Assumption is that creds are properly defined by default through GCP
-	cloudClient, cloudLogger, err := NewGCloudLogger(projectId, "asset-delivery")
+	cloudClient, cloudLogger, err := NewGCloudLogger(gcpProject, "asset-delivery")
 	if err != nil {
 		log.Fatalf("Failed to create connection to logger: %s", err.Error())
 	}
