@@ -1,16 +1,12 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"flag"
 	"io"
 	"log"
 	"net/http"
-	"os"
 
-	"cloud.google.com/go/logging"
-	"cloud.google.com/go/storage"
 	"github.com/monstercat/golib/logger"
 	"google.golang.org/api/option"
 
@@ -25,14 +21,16 @@ func main() {
 	flag.StringVar(&projectId, "project-id", "", "Project ID")
 	flag.Parse()
 
-	fs, err := NewGCloudFileSystem(credsFilename)
+	opts := option.WithCredentialsFile(credsFilename)
+
+	fs, err := NewGCloudFileSystem(opts)
 	if err != nil {
 		log.Fatalf("Failed to create file system: %s", err.Error())
 	}
 
 	log.Print("Project ID: ", projectId)
 
-	cloudLogger, err := NewGCloudLogger(credsFilename, projectId, "asset-delivery")
+	cloudLogger, err := NewGCloudLogger(projectId, "asset-delivery", opts)
 	if err != nil {
 		log.Fatalf("Failed to create connection to logger: %s", err.Error())
 	}
@@ -79,26 +77,4 @@ func main() {
 	if err := http.ListenAndServe(address, nil); err != nil {
 		log.Fatalf("Failed to start listening on %s: %s", address, err.Error())
 	}
-}
-
-func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
-	opts := option.WithCredentialsFile(filename)
-	client, err := storage.NewClient(context.Background(), opts)
-	if err != nil {
-		return nil, err
-	}
-	return &GCloudFileSystem{
-		Client: client,
-		Bucket: os.Getenv("BUCKET"),
-		Host:   os.Getenv("HOST"),
-	}, nil
-}
-
-func NewGCloudLogger(filename, project, name string) (*logger.Google, error) {
-	opts := option.WithCredentialsFile(filename)
-	client, err := logging.NewClient(context.Background(), project, opts)
-	if err != nil {
-		return nil, err
-	}
-	return logger.NewGoogle(client, name), nil
 }

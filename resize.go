@@ -19,7 +19,7 @@ import (
 // PubSub topic for sending and receiving resize request
 const ResizeTopic = "asset-delivery-resize"
 
-func Resize(fs *GCloudFileSystem, opts ResizeOptions) error {
+func Resize(fs FileSystem, opts ResizeOptions) error {
 	buf, cc, err := GetImage(opts.Location)
 	if err != nil {
 		return &ParamError{Param: "url", Detail: fmt.Sprintf("Could not get image: %s", opts.Location), RootError: err}

@@ -1,17 +1,11 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"net/http"
-	"os"
 	"strings"
 
-	"cloud.google.com/go/logging"
-	"cloud.google.com/go/pubsub"
-	"cloud.google.com/go/storage"
-	"github.com/monstercat/golib/logger"
 	"google.golang.org/api/option"
 
 	. "github.com/monstercat/asset-delivery"
@@ -25,20 +19,22 @@ func main() {
 	flag.StringVar(&projectId, "project-id", "", "Project ID")
 	flag.Parse()
 
-	fs, err := NewGCloudFileSystem(credsFilename)
+	opts := option.WithCredentialsFile(credsFilename)
+
+	fs, err := NewGCloudFileSystem(opts)
 	if err != nil {
 		log.Fatalf("Failed to create file system: %s", err.Error())
 	}
 
 	log.Print("Project ID: ", projectId)
 
-	pb, err := NewGCloudPubSub(credsFilename, projectId)
+	pb, err := NewGCloudPubSub(projectId, opts)
 	if err != nil {
 		log.Fatalf("Failed to create connection to pubsub: %s", err.Error())
 	}
 	defer pb.Close()
 
-	cloudLogger, err := NewGCloudLogger(credsFilename, projectId, "asset-delivery")
+	cloudLogger, err := NewGCloudLogger(projectId, "asset-delivery", opts)
 	if err != nil {
 		log.Fatalf("Failed to create connection to logger: %s", err.Error())
 	}
@@ -54,41 +50,4 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to start listening on %s: %s", address, err.Error())
 	}
-}
-
-func NewGCloudLogger(filename, project, name string) (*logger.Google, error) {
-	opts := option.WithCredentialsFile(filename)
-	client, err := logging.NewClient(context.Background(), project, opts)
-	if err != nil {
-		return nil, err
-	}
-	return logger.NewGoogle(client, name), nil
-}
-
-func NewGCloudFileSystem(filename string) (*GCloudFileSystem, error) {
-	opts := option.WithCredentialsFile(filename)
-	client, err := storage.NewClient(context.Background(), opts)
-	if err != nil {
-		return nil, err
-	}
-	return &GCloudFileSystem{
-		Client: client,
-		Bucket: os.Getenv("BUCKET"),
-		Host:   os.Getenv("HOST"),
-	}, nil
-}
-
-func NewGCloudPubSub(filename, projectId string) (*GCloudPubSub, error) {
-	opts := option.WithCredentialsFile(filename)
-	client, err := pubsub.NewClient(
-		context.Background(),
-		projectId,
-		opts,
-	)
-	if err != nil {
-		return nil, err
-	}
-	return &GCloudPubSub{
-		Client: client,
-	}, nil
 }
