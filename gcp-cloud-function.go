@@ -3,8 +3,11 @@ package asset_delivery
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+
+	"github.com/monstercat/golib/logger"
 )
 
 // This file contains functionality to be used by GCP Cloud Functions. This file *must* be in the most top-level directory
@@ -28,43 +31,43 @@ func GcfResize(ctx context.Context, m PubSubMessage) error {
 	log.Print("Project ID: ", gcpProject)
 	log.Printf("Request: %s", m.Data)
 
+	// Assumption is that creds are properly defined by default through GCP
+	cloudClient, cloudLogger, err := NewGCloudLogger(gcpProject, "asset-resize")
+	if err != nil {
+		log.Printf("Failed to create connection to logger: %s", err.Error())
+		return err
+	}
+	defer cloudClient.Close()
+
 	var data ResizeOptions
 	if err := json.Unmarshal(m.Data, &data); err != nil {
-		log.Printf("Could not unmarshal message. %s", err)
+		cloudLogger.Log(logger.SeverityError, fmt.Sprintf("Could not unmarshal message. %s", err))
 		return err
 	}
 
 	// Assumption is that creds are properly defined by default through GCP
 	fs, err := NewGCloudFileSystem()
 	if err != nil {
-		log.Printf("Failed to create file system: %s", err.Error())
+		cloudLogger.Log(logger.SeverityError, fmt.Sprintf("Failed to create file system: %s", err.Error()))
 		return err
 	}
 
-	// Assumption is that creds are properly defined by default through GCP
-	//cloudClient, cloudLogger, err := NewGCloudLogger(gcpProject, "asset-delivery")
-	//if err != nil {
-	//	log.Printf("Failed to create connection to logger: %s", err.Error())
-	//	return err
-	//}
-	//defer cloudClient.Close()
-
-	//l := &logger.Contextual{
-	//	Logger:  cloudLogger,
-	//	Context: data,
-	//}
-
 	// Populate the hash of the ResizeOpts
 	data.PopulateHash()
+	log.Printf("Hash: %s", data.HashSum)
+
+	l := &logger.Contextual{
+		Logger:  cloudLogger,
+		Context: data,
+	}
 
 	// Resize
 	if err := Resize(fs, data); err != nil {
 		if v, ok := err.(RootError); ok && v.Root() != nil {
-			log.Print("Could not resize image: "+err.Error()+"; "+v.Root().Error())
-			//l.Log(logger.SeverityError, "Could not resize image: "+err.Error()+"; "+v.Root().Error())
+			l.Log(logger.SeverityError, "Could not resize image: "+err.Error()+"; "+v.Root().Error())
 		} else {
 			log.Print("Could not resize image: "+err.Error())
-			//l.Log(logger.SeverityError, "Could not resize image: "+err.Error())
+			l.Log(logger.SeverityError, "Could not resize image: "+err.Error())
 		}
 		return err
 	}
