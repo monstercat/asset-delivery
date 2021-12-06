@@ -11,6 +11,8 @@ import (
 	. "github.com/monstercat/asset-delivery"
 )
 
+
+
 func main() {
 	var address, credsFilename, allowedHosts, projectId string
 	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
