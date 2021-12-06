@@ -15,7 +15,7 @@ import (
 var (
 	// GCP_PROJECT defined for the Go runtime
 	// @see https://cloud.google.com/functions/docs/configuring/env-var
-	gcpProject = os.Getenv("GCP_PROJECT")
+	gcpProject = os.Getenv("PROJECTID")
 
 )
 
@@ -31,6 +31,7 @@ type PubSubMessage struct {
 // GcfResize is meant to run on Google Cloud Functions
 func GcfResize(ctx context.Context, m PubSubMessage) error {
 	log.Print("Project ID: ", gcpProject)
+	log.Printf("Request: %s", m.Message.Data)
 
 	var data ResizeOptions
 	if err := json.Unmarshal(m.Message.Data, &data); err != nil {
@@ -72,5 +73,5 @@ func GcfResize(ctx context.Context, m PubSubMessage) error {
 		return err
 	}
 
-	return nil 
+	return nil
 }
