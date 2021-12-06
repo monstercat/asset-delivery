@@ -57,7 +57,7 @@ func ResizeSubscriber(ctx context.Context, m PubSubMessage) {
 	// Populate the hash of the ResizeOpts
 	data.PopulateHash()
 
-	// Resize 
+	// Resize
 	l.Log(logger.SeverityInfo, "Received request to resize")
 	if err := Resize(fs, data); err != nil {
 		if v, ok := err.(RootError); ok && v.Root() != nil {
