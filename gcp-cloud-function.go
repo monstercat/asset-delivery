@@ -16,26 +16,23 @@ var (
 	// GCP_PROJECT defined for the Go runtime
 	// @see https://cloud.google.com/functions/docs/configuring/env-var
 	gcpProject = os.Getenv("PROJECTID")
-
 )
 
 // PubSubMessage is the payload of a Pub/Sub event. Data is strictly ResizeOptions.
 // See the documentation for more details:
 // https://cloud.google.com/pubsub/docs/reference/rest/v1/PubsubMessage
 type PubSubMessage struct {
-	Message struct {
-		Data []byte `json:"data,omitempty"`
-	} `json:"message"`
+	Data []byte `json:"data,omitempty"`
 }
 
 // GcfResize is meant to run on Google Cloud Functions
 func GcfResize(ctx context.Context, m PubSubMessage) error {
 	log.Print("Project ID: ", gcpProject)
-	log.Printf("Request: %s", m.Message.Data)
+	log.Printf("Request: %s", m.Data)
 
 	var data ResizeOptions
-	if err := json.Unmarshal(m.Message.Data, &data); err != nil {
-		log.Printf("Could not unmarshal message. %s" ,err)
+	if err := json.Unmarshal(m.Data, &data); err != nil {
+		log.Printf("Could not unmarshal message. %s", err)
 		return err
 	}
 
