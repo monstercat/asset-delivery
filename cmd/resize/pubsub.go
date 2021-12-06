@@ -1,4 +1,4 @@
-package main
+package resize
 
 import . "github.com/monstercat/asset-delivery"
 
@@ -8,8 +8,6 @@ import . "github.com/monstercat/asset-delivery"
 type PubSubMessage struct {
 	Message struct {
 		Data ResizeOptions `json:"data,omitempty"`
-		ID   string        `json:"id"`
 	} `json:"message"`
-	Subscription string `json:"subscription"`
 }
 
