@@ -1,21 +1,36 @@
-package main
+package asset_delivery
 
 import (
 	"crypto/sha1"
+	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
+const MaxImageDimension = 4096
+
 type ResizeOptions struct {
-	Width    uint64
+	Width    uint
 	Location string
-	URL      *url.URL
 	HashSum  string
 	Encoding string
 	Prefix   string
-	Force    bool
+}
+
+type ResizeOptionsProcessed struct {
+	ResizeOptions
+	URL   *url.URL
+	Force bool
+}
+
+func (opts *ResizeOptions) PopulateHash() {
+	hash := sha1.New()
+	hash.Write([]byte(opts.Location))
+	sum := hash.Sum(nil)
+	opts.HashSum = fmt.Sprintf("%x", sum)
 }
 
 func (opts *ResizeOptions) ObjectKey() string {
@@ -29,8 +44,8 @@ func (opts *ResizeOptions) DesiredEncoding() string {
 	return filepath.Ext(opts.Location)
 }
 
-func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
-	var opts ResizeOptions
+func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptionsProcessed, error) {
+	var opts ResizeOptionsProcessed
 	if xs, ok := m["width"]; ok {
 		var err error
 		opts.Width, err = parseUint(xs[0])
@@ -52,11 +67,7 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
 	if opts.Location == "" {
 		return opts, &ParamError{Param: "url", Detail: "Invalid (or missing) URL."}
 	} else {
-		hash := sha1.New()
-		hash.Write([]byte(opts.Location))
-		sum := hash.Sum(nil)
-		opts.HashSum = fmt.Sprintf("%x", sum)
-		// TODO validate location param, we'll just let HTTP request validate for now
+		opts.PopulateHash()
 	}
 	if _, ok := m["force"]; ok {
 		opts.Force = true
@@ -67,4 +78,20 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptions, error) {
 		// TODO validate encoding param, we'll let image encoder default for now
 	}
 	return opts, nil
+}
+
+func parseUint(str string) (uint, error) {
+	size, err := strconv.ParseUint(str, 10, 32)
+	if err != nil {
+		return 0, errors.New("bad image size provided")
+	}
+	return uint(size), nil
+}
+
+type WriteInfo struct {
+	cacheControl string
+}
+
+func (i *WriteInfo) CacheControl() string {
+	return i.cacheControl
 }

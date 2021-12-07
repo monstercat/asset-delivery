@@ -1,4 +1,4 @@
-package main
+package asset_delivery
 
 import (
 	"errors"
@@ -29,3 +29,4 @@ type FileInfo interface {
 	FileInfoWrite
 	FileInfoRead
 }
+

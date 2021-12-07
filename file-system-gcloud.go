@@ -1,8 +1,9 @@
-package main
+package asset_delivery
 
 import (
 	"context"
 	"io"
+	"log"
 	"path"
 	"strings"
 	"time"
@@ -26,6 +27,29 @@ type GCloudFileSystem struct {
 	Client *storage.Client
 	Host   string
 	Bucket string
+
+	currBucket   string
+	bucketHandle *storage.BucketHandle
+}
+
+func (fs *GCloudFileSystem) GetBucket(bucket string) *storage.BucketHandle {
+	if bucket == "" {
+		log.Print("Bucket name missing")
+		return nil
+	}
+	if bucket == fs.currBucket {
+		return fs.bucketHandle
+	}
+	fs.currBucket = bucket
+
+	bucketHandle := fs.Client.Bucket(fs.Bucket)
+	_, err := bucketHandle.Attrs(context.Background())
+	if err != nil {
+		log.Printf("Bucket %s does not exist. %s", bucket, err)
+		return nil
+	}
+	fs.bucketHandle = bucketHandle
+	return bucketHandle
 }
 
 func (fs *GCloudFileSystem) FromVolume(name string) FileSystem {
@@ -63,7 +87,11 @@ func (fs *GCloudFileSystem) ReadCloser(filename string) (io.ReadCloser, error) {
 }
 
 func (fs *GCloudFileSystem) Write(filename string, r io.Reader, info FileInfoWrite) error {
-	handle := fs.Client.Bucket(fs.Bucket).Object(filename)
+	bucket := fs.GetBucket(fs.Bucket)
+	if bucket == nil {
+		return ErrNoFile
+	}
+	handle := bucket.Object(filename)
 	w := handle.NewWriter(context.Background())
 	w.CacheControl = info.CacheControl()
 	defer w.Close()
