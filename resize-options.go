@@ -13,7 +13,7 @@ import (
 const MaxImageDimension = 4096
 
 type ResizeOptions struct {
-	Width    uint64
+	Width    uint
 	Location string
 	HashSum  string
 	Encoding string
@@ -80,12 +80,12 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptionsProcessed, e
 	return opts, nil
 }
 
-func parseUint(str string) (uint64, error) {
+func parseUint(str string) (uint, error) {
 	size, err := strconv.ParseUint(str, 10, 32)
 	if err != nil {
 		return 0, errors.New("bad image size provided")
 	}
-	return size, nil
+	return uint(size), nil
 }
 
 type WriteInfo struct {

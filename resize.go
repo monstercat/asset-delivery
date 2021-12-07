@@ -55,7 +55,7 @@ func GetImage(url string) ([]byte, string, error) {
 	return buf, res.Header.Get("Cache-Control"), err
 }
 
-func ResizeImage(img image.Image, target uint64) (image.Image, error) {
+func ResizeImage(img image.Image, target uint) (image.Image, error) {
 	bounds := img.Bounds()
 	width := bounds.Max.X
 	height := bounds.Max.Y
