@@ -4,9 +4,11 @@ import (
 	"context"
 
 	"cloud.google.com/go/pubsub"
+	"github.com/monstercat/golib/logger"
 )
 
 type GCloudPubSub struct {
+	logger.Logger
 	*pubsub.Client
 }
 
@@ -18,6 +20,10 @@ func (p *GCloudPubSub) Publish(subj string, data []byte) error {
 	res := topic.Publish(context.Background(), &pubsub.Message{
 		Data: data,
 	})
-	_, err := res.Get(context.Background())
+
+	id, err := res.Get(context.Background())
+	if p.Logger != nil {
+		p.Log(logger.SeverityInfo, "Resize msg id: " + id)
+	}
 	return err
 }

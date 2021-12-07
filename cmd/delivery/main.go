@@ -42,6 +42,8 @@ func main() {
 	}
 	defer cloudClient.Close()
 
+	pb.Logger = cloudLogger
+
 	server := &Server{
 		Logger:         cloudLogger,
 		FS:             fs,
