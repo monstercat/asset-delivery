@@ -45,6 +45,9 @@ func GcfResize(ctx context.Context, m PubSubMessage) error {
 		return err
 	}
 
+	// TODO: find a way to determine that an existing resize for this specific set of parameters has not already
+	//  been started
+	
 	// Assumption is that creds are properly defined by default through GCP
 	fs, err := NewGCloudFileSystem()
 	if err != nil {

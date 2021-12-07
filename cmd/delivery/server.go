@@ -33,8 +33,10 @@ func (s *Server) HostPermitted(host string) bool {
 	return false
 }
 
+// TODO: generate a request id that can be passed along for all requests.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
+		s.Logger.Log(logger.SeverityWarning, "Request received with method " + r.Method)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -70,17 +72,13 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.sendResize(opts.ResizeOptions)
+	s.sendResize(opts.ResizeOptions, l)
 	http.Redirect(w, r, opts.Location, http.StatusTemporaryRedirect)
 }
 
 // sendResize sends the resize commands quietly.
-func (s *Server) sendResize(opts ResizeOptions) {
-	l := &logger.Contextual{
-		Logger:  s.Logger,
-		Context: opts,
-	}
-
+// TODO: pass in publish topic through an environment variable
+func (s *Server) sendResize(opts ResizeOptions, l logger.Logger) {
 	// Send resize request
 	b, err := json.Marshal(opts)
 	if err != nil {

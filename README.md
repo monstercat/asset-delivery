@@ -29,7 +29,7 @@ For example, if you want a version of https://host/path with width=100 and encod
 
 - **ADDRESS**: Address to bind to. Defaults to: 0.0.0.0:80
 - **credentials**: The location of the Google JWT file.
-- **allowedHosts**: A comma separated list of domain hosts. An empty value allows any.
+- **allowedHosts**: A comma separated list of domain hosts. This is used to filter requests by the host in the "urL" query param (above). Only "url"s that contain one of the provided hosts will be resized. An empty value allows any. 
 - **project-id**: Google Project ID (for logging & pubsub) 
 
 ### TODO:
