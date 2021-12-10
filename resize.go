@@ -37,7 +37,11 @@ func Resize(fs FileSystem, opts ResizeOptions) error {
 		return &SystemError{Detail: "An error occurred.", RootError: err}
 	}
 	if cc == "" {
-		cc = defaultCacheControl
+		if opts.CacheControl == "" {
+			cc = defaultCacheControl
+		} else {
+			cc = opts.CacheControl
+		}
 	}
 	if err := fs.Write(opts.ObjectKey(), bits, &WriteInfo{cacheControl: cc}); err != nil {
 		return &SystemError{Detail: "An error occurred.", RootError: err}
