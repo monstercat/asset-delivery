@@ -36,7 +36,7 @@ func (s *Server) HostPermitted(host string) bool {
 // TODO: generate a request id that can be passed along for all requests.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		s.Logger.Log(logger.SeverityWarning, "Request received with method " + r.Method)
+		s.Logger.Log(logger.SeverityWarning, "Request received with method "+r.Method)
 		w.WriteHeader(http.StatusForbidden)
 		return
 	}
@@ -85,12 +85,12 @@ func (s *Server) sendResize(opts ResizeOptions, l logger.Logger) {
 		l.Log(logger.SeverityError, fmt.Sprintf("Could not marshal resize options. %s", err))
 		return
 	}
-	l.Log(logger.SeverityInfo, "Sending resize request on " + ResizeTopic)
+	l.Log(logger.SeverityInfo, "Sending resize request on "+ResizeTopic)
 	if err := s.PB.Publish(ResizeTopic, b); err != nil {
 		l.Log(logger.SeverityError, fmt.Sprintf("Could not send resize command. %s", err))
 		return
 	}
-	l.Log(logger.SeverityInfo, "Resize request sent " + ResizeTopic)
+	l.Log(logger.SeverityInfo, "Resize request sent "+ResizeTopic)
 }
 
 func isExpired(info FileInfo) bool {
