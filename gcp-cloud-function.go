@@ -17,6 +17,8 @@ var (
 	// GCP_PROJECT defined for the Go runtime
 	// @see https://cloud.google.com/functions/docs/configuring/env-var
 	gcpProject = os.Getenv("PROJECTID")
+
+	defaultCacheControl = os.Getenv("DEFAULT_CACHE_CONTROL")
 )
 
 // PubSubMessage is the payload of a Pub/Sub event. Data is strictly ResizeOptions.

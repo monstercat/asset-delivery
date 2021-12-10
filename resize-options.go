@@ -13,11 +13,12 @@ import (
 const MaxImageDimension = 4096
 
 type ResizeOptions struct {
-	Width    uint
-	Location string
-	HashSum  string
-	Encoding string
-	Prefix   string
+	Width        uint
+	Location     string
+	HashSum      string
+	Encoding     string
+	Prefix       string
+	CacheControl string
 }
 
 type ResizeOptionsProcessed struct {
@@ -72,10 +73,12 @@ func NewResizeOptionsFromQuery(m map[string][]string) (ResizeOptionsProcessed, e
 	if _, ok := m["force"]; ok {
 		opts.Force = true
 	}
-
 	if xs, ok := m["encoding"]; ok {
 		opts.Encoding = strings.TrimSpace(xs[0])
 		// TODO validate encoding param, we'll let image encoder default for now
+	}
+	if xs, ok := m["cache-control"]; ok {
+		opts.CacheControl = strings.TrimSpace(xs[0])
 	}
 	return opts, nil
 }
