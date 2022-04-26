@@ -26,11 +26,31 @@ func (s *Server) HostPermitted(host string) bool {
 		return true
 	}
 	for _, x := range s.PermittedHosts {
-		if strings.TrimSpace(x) == host {
+		if testHostWithPattern(strings.TrimSpace(x), host) {
 			return true
 		}
 	}
 	return false
+}
+
+// testHostWithPattern will test the hosts, allowing for a * pattern (separated by .). Note that the host should still
+// contain the same # of parts. For example, *.monstercat.com will not match with beta.app.monstercat.com.
+func testHostWithPattern(pattern, host string) bool {
+	patternParts := strings.Split(pattern, ".")
+	hostParts := strings.Split(host, ".")
+	if len(hostParts) != len(patternParts) {
+		return false
+	}
+	for i, p := range patternParts {
+		curr := hostParts[i]
+		if p == "*" {
+			continue
+		}
+		if curr != p {
+			return false
+		}
+	}
+	return true
 }
 
 // TODO: generate a request id that can be passed along for all requests.
