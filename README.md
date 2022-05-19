@@ -1,48 +1,27 @@
-# Asset Delivery
+# Introduction
 
-Delivers resized assets (images) in response to HTTP requests. It contains two parts:
-- Delivery server
-- Resizing routine 
+Asset delivery provides a centralized way to cache & resize images and videos. It is currently hosted on [https://cdx.monstercat.com](https://cdx.monstercat.com) and has the following options:&#x20;
 
-## Delivery Server 
-
-The delivery server attempts to find an existing resized file from a storage location. If the resized file is found it 
-returns the resized file. Otherwise, it will deliver the original file and send an instruction to create a resized
-version of said file. 
-
-### HTTP Request 
-
-Each request needs to have the following as URL parameters: 
-- width 
-- location
-- encoding (e.g., webp, jpeg, png)
-
-For example, if you want a version of https://host/path with width=100 and encoding=webp, the resulting request would be
-`https://[host]?width=100&url=https://host/path&encoding=webp`
-
-### Environment Variables 
-
-- **BUCKET**: GCP Storage bucket name
-- **HOST**: GCP Storage host (optional). You can fill this in if an emulator is being used.
-
-### Command-Line Arguments 
-
-- **ADDRESS**: Address to bind to. Defaults to: 0.0.0.0:80
-- **credentials**: The location of the Google JWT file.
-- **allowedHosts**: A comma separated list of domain hosts. This is used to filter requests by the host in the "urL" query param (above). Only "url"s that contain one of the provided hosts will be resized. An empty value allows any. 
-- **project-id**: Google Project ID (for logging & pubsub) 
-
-### TODO:
-
-- Externalize the PubSub topic in an environment variable 
+<table><thead><tr><th>Parameter</th><th>Type</th><th data-type="checkbox">Required</th><th>Description</th></tr></thead><tbody><tr><td>url</td><td>string</td><td>true</td><td>URL to the original</td></tr><tr><td>force</td><td>boolean</td><td>false</td><td>Forces a cache reload for the specific width</td></tr><tr><td>encoding</td><td>string</td><td>true</td><td>Format of the resized image </td></tr><tr><td>width</td><td>number</td><td>true</td><td>Width to return</td></tr></tbody></table>
 
 
-## Resizing 
 
-Resizing is done through `GcfResize` function which is meant to be run as a Google Cloud Function. 
+When the asset delivery mechanism receives a request, it checks to see if resizing is required. If so, it will send an instruction to resize the image, and will simply redirect the user to the original image. Otherwise, it will redirect the user to the resized image.&#x20;
 
-### Environment Variables
+An image will be resized if:&#x20;
 
-- **PROJECTID**: Google Project ID (used for logging)
-- **BUCKET**: GCP Storage bucket name
+* the `force` parameter is true&#x20;
+* the resized file does not exist&#x20;
+* the `cache-control` on the image has designated it to be expired.&#x20;
 
+### Prior Implementations&#x20;
+
+Our first implementation stored resized images at the application level for each application. While this worked, it caused duplicate work as each application needed to handle its own resizing operations. Furthermore, each route needed to be manually configured to allow for image resizing.&#x20;
+
+Our second attempt utilized [CloudFlare Image Resizing](https://developers.cloudflare.com/images/image-resizing) but this was not financially viable.&#x20;
+
+### TODOs
+
+* Handle videos&#x20;
+* Finish documentation&#x20;
+* force should delete all resized images based on the hash&#x20;
