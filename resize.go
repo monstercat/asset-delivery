@@ -75,7 +75,20 @@ func ResizeImage(img image.Image, target uint) (image.Image, error) {
 	return imaging.Resize(img, width, height, imaging.Lanczos), nil
 }
 
-func ReaderToImage(r io.Reader, hint string) (image.Image, error) {
+func DefaultImageDecode(r io.Reader) (image.Image, error) {
+	img, _, err := image.Decode(r)
+	if err != nil {
+		return nil, &ParamError{
+			Param:     "url",
+			RootError: err,
+			Detail:    "Unsupported image format.",
+		}
+	}
+	return img, nil
+}
+
+// Reader to image will try to read the image
+func ReaderToImage(r io.ReadSeeker, hint string) (image.Image, error) {
 	ext := strings.ToLower(filepath.Ext(hint))
 	var fn func(io.Reader) (image.Image, error)
 	switch ext {
@@ -86,19 +99,19 @@ func ReaderToImage(r io.Reader, hint string) (image.Image, error) {
 	case ".webp":
 		fn = webp.Decode
 	default:
-		fn = func(r io.Reader) (image.Image, error) {
-			img, _, err := image.Decode(r)
-			if err != nil {
-				return nil, &ParamError{
-					Param:     "url",
-					RootError: err,
-					Detail:    "Unsupported image format.",
-				}
-			}
-			return img, nil
-		}
+		fn = DefaultImageDecode
 	}
-	return fn(r)
+
+	img, triedError := fn(r)
+	if triedError != nil {
+		r.Seek(0, io.SeekStart)
+		img, err := DefaultImageDecode(r)
+		if err != nil {
+			return nil, triedError
+		}
+		return img, nil
+	}
+	return img, nil
 }
 
 func ImageToBytes(i image.Image, hint string, quality int) (*bytes.Buffer, error) {
