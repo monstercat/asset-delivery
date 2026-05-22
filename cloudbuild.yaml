@@ -24,6 +24,7 @@ steps:
       - '--platform=$_PLATFORM'
       - '--region=$_DEPLOY_REGION'
       - '--image=$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+      - '--no-traffic'
     id: Deploy
 images:
   - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
