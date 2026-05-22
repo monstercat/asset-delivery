@@ -15,6 +15,16 @@ steps:
       - push
       - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
     id: Push
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_SERVICE_NAME
+      - '--platform=$_PLATFORM'
+      - '--region=$_DEPLOY_REGION'
+      - '--image=$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+    id: Deploy
 images:
   - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
 options:
@@ -22,5 +32,7 @@ options:
 substitutions:
   _SERVICE_NAME: asset-delivery
   _GCR_HOSTNAME: us.gcr.io
+  _PLATFORM: managed
+  _DEPLOY_REGION: northamerica-northeast1
 tags:
   - asset-delivery
