@@ -14,26 +14,66 @@ const (
 
 func TestReaderToImage(t *testing.T) {
 	cases := []struct {
-		Base64 string
-		Hint   string
+		Name           string
+		Base64         string
+		Hint           string
+		ExpectedFormat string
 	}{
-		{PngFileB64, "a.png"},
-		{PngFileB64, "a.webp"},
-		{PngFileB64, "a.jpeg"},
-		{WebPFileB64, "a.webp"},
-		{WebPFileB64, "a.png"},
-		{JpegFileB64, "a.jpeg"},
+		{"PNG with .png hint", PngFileB64, "a.png", "png"},
+		{"PNG with mismatched .webp hint", PngFileB64, "a.webp", "png"},
+		{"PNG with mismatched .jpeg hint", PngFileB64, "a.jpeg", "png"},
+		{"WebP with .webp hint", WebPFileB64, "a.webp", "webp"},
+		{"WebP with mismatched .png hint", WebPFileB64, "a.png", "webp"},
+		{"JPEG with .jpeg hint", JpegFileB64, "a.jpeg", "jpeg"},
+		// Regression: extensionless URLs (e.g., /api/artist/{uuid}/cover)
+		// must still decode and report the detected format so the caller
+		// can pick an output encoding.
+		{"PNG with extensionless hint", PngFileB64, "/api/artist/uuid/cover", "png"},
+		{"WebP with extensionless hint", WebPFileB64, "/api/artist/uuid/cover", "webp"},
+		{"JPEG with extensionless hint", JpegFileB64, "/api/artist/uuid/cover", "jpeg"},
 	}
 
 	for _, c := range cases {
-		b, err := base64.StdEncoding.DecodeString(c.Base64)
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Run(c.Name, func(t *testing.T) {
+			b, err := base64.StdEncoding.DecodeString(c.Base64)
+			if err != nil {
+				t.Fatal(err)
+			}
 
-		_, err = ReaderToImage(bytes.NewReader(b), c.Hint)
-		if err != nil {
-			t.Fatal(err)
-		}
+			img, format, err := ReaderToImage(bytes.NewReader(b), c.Hint)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if img == nil {
+				t.Fatal("expected decoded image, got nil")
+			}
+			if format != c.ExpectedFormat {
+				t.Fatalf("expected detected format %q, got %q", c.ExpectedFormat, format)
+			}
+		})
+	}
+}
+
+func TestResolveEncoding(t *testing.T) {
+	cases := []struct {
+		Name     string
+		Hint     string
+		Detected string
+		Want     string
+	}{
+		{"explicit webp hint wins", ".webp", "jpeg", ".webp"},
+		{"jpg hint normalized through case", ".JPG", "png", ".JPG"},
+		{"empty hint falls back to detected", "", "png", ".png"},
+		{"unknown hint falls back to detected", ".tiff", "webp", ".webp"},
+		{"both empty stays empty (caller surfaces ErrFileNotHandled)", "", "", ""},
+	}
+
+	for _, c := range cases {
+		t.Run(c.Name, func(t *testing.T) {
+			got := resolveEncoding(c.Hint, c.Detected)
+			if got != c.Want {
+				t.Fatalf("resolveEncoding(%q, %q) = %q; want %q", c.Hint, c.Detected, got, c.Want)
+			}
+		})
 	}
 }
