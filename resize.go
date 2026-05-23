@@ -8,6 +8,7 @@ import (
 	"image/png"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -18,6 +19,11 @@ import (
 
 // PubSub topic for sending and receiving resize request
 const ResizeTopic = "asset-delivery-resize"
+
+// defaultCacheControl is the Cache-Control header value written on
+// resized objects when neither the upstream response nor the request
+// supplied one.
+var defaultCacheControl = os.Getenv("DEFAULT_CACHE_CONTROL")
 
 func Resize(fs FileSystem, opts ResizeOptions) error {
 	buf, cc, err := GetImage(opts.Location)
