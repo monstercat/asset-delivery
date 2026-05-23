@@ -82,6 +82,10 @@ steps:
     waitFor:
       - Build Resize
 
+  # --no-traffic is omitted: gcloud rejects it on first-time service
+  # creation (no existing revision to keep serving). Subsequent deploys
+  # update this same service in place at 100% traffic. Add --no-traffic
+  # back once staged rollouts are wanted.
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
@@ -91,7 +95,8 @@ steps:
       - '--platform=$_PLATFORM'
       - '--region=$_DEPLOY_REGION'
       - '--image=$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_RESIZE_SERVICE_NAME:$COMMIT_SHA'
-      - '--no-traffic'
+      - '--no-allow-unauthenticated'
+      - '--quiet'
     id: Deploy Resize
     waitFor:
       - Push Resize
