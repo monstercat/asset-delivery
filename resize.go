@@ -24,7 +24,7 @@ func Resize(fs FileSystem, opts ResizeOptions) error {
 	if err != nil {
 		return &ParamError{Param: "url", Detail: fmt.Sprintf("Could not get image: %s", opts.Location), RootError: err}
 	}
-	img, err := ReaderToImage(bytes.NewReader(buf), opts.Location)
+	img, format, err := ReaderToImage(bytes.NewReader(buf), opts.Location)
 	if err != nil {
 		return &ParamError{Param: "url", Detail: "Could not read URL as an image.", RootError: err}
 	}
@@ -32,7 +32,7 @@ func Resize(fs FileSystem, opts ResizeOptions) error {
 	if err != nil {
 		return &SystemError{Detail: "Could not resize the provided image.", RootError: err}
 	}
-	bits, err := ImageToBytes(img, opts.DesiredEncoding(), 80)
+	bits, err := ImageToBytes(img, resolveEncoding(opts.DesiredEncoding(), format), 80)
 	if err != nil {
 		return &SystemError{Detail: "An error occurred.", RootError: err}
 	}
@@ -87,31 +87,64 @@ func DefaultImageDecode(r io.Reader) (image.Image, error) {
 	return img, nil
 }
 
-// Reader to image will try to read the image
-func ReaderToImage(r io.ReadSeeker, hint string) (image.Image, error) {
+// ReaderToImage decodes r as an image, using hint's extension to pick
+// the decoder when it names a supported format and falling back to
+// image.Decode otherwise. The returned format is the auto-detected
+// format name ("jpeg", "png", "webp", ...) when the fallback path is
+// taken, or the format implied by the hint when the typed decoder
+// succeeds. Callers can use it to choose an output encoding when the
+// hint URL has no extension.
+func ReaderToImage(r io.ReadSeeker, hint string) (image.Image, string, error) {
 	ext := strings.ToLower(filepath.Ext(hint))
 	var fn func(io.Reader) (image.Image, error)
+	var formatHint string
 	switch ext {
 	case ".jpeg", ".jfif", ".jpg":
 		fn = jpeg.Decode
+		formatHint = "jpeg"
 	case ".png":
 		fn = png.Decode
+		formatHint = "png"
 	case ".webp":
 		fn = webp.Decode
-	default:
-		fn = DefaultImageDecode
+		formatHint = "webp"
 	}
 
-	img, triedError := fn(r)
-	if triedError != nil {
-		r.Seek(0, io.SeekStart)
-		img, err := DefaultImageDecode(r)
-		if err != nil {
-			return nil, triedError
+	if fn != nil {
+		if img, err := fn(r); err == nil {
+			return img, formatHint, nil
 		}
-		return img, nil
+		if _, err := r.Seek(0, io.SeekStart); err != nil {
+			return nil, "", err
+		}
 	}
-	return img, nil
+
+	img, format, err := image.Decode(r)
+	if err != nil {
+		return nil, "", &ParamError{
+			Param:     "url",
+			RootError: err,
+			Detail:    "Unsupported image format.",
+		}
+	}
+	return img, format, nil
+}
+
+// resolveEncoding picks the output extension for ImageToBytes. It
+// prefers the caller-supplied hint when it names a supported format
+// (covering the explicit `encoding=` query param and URLs with usable
+// extensions); otherwise it falls back to the format detected during
+// decode. Both inputs being empty/unknown returns the hint unchanged,
+// which lets ImageToBytes surface ErrFileNotHandled as before.
+func resolveEncoding(hint, detected string) string {
+	switch strings.ToLower(hint) {
+	case ".jpeg", ".jfif", ".jpg", ".png", ".webp":
+		return hint
+	}
+	if detected != "" {
+		return "." + detected
+	}
+	return hint
 }
 
 func ImageToBytes(i image.Image, hint string, quality int) (*bytes.Buffer, error) {
