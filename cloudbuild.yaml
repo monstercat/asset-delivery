@@ -1,39 +1,117 @@
 steps:
+  # Build a single image containing both the delivery and resize binaries.
+  # The build image's CMD copies the binaries into /workspace/binaries on
+  # next step's docker run, where subsequent Dockerfiles pick them up.
   - name: gcr.io/cloud-builders/docker
     args:
       - build
-      - '--no-cache'
       - '-t'
-      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
-      - '--build-arg=PROJECTID=$PROJECT_ID'
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/build:$COMMIT_SHA'
+      - '-t'
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/build:latest'
       - .
       - '-f'
-      - ./cmd/delivery/Dockerfile
-    id: Build
+      - cloud/build.Dockerfile
+    id: Build Binaries
+
+  # Run the build image so its CMD copies the compiled binaries into the
+  # shared /workspace bind mount for downstream image builds.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - run
+      - '--mount'
+      - 'type=bind,source=/workspace,target=/workspace'
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/build:$COMMIT_SHA'
+    id: Copy Binaries to Workspace
+    waitFor:
+      - Build Binaries
+
+  # asset-delivery: HTTP entry point that publishes resize requests.
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-t'
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_DELIVERY_SERVICE_NAME:$COMMIT_SHA'
+      - .
+      - '-f'
+      - cloud/delivery.Dockerfile
+    id: Build Delivery
+    waitFor:
+      - Copy Binaries to Workspace
+
   - name: gcr.io/cloud-builders/docker
     args:
       - push
-      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
-    id: Push
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_DELIVERY_SERVICE_NAME:$COMMIT_SHA'
+    id: Push Delivery
+    waitFor:
+      - Build Delivery
+
   - name: gcr.io/google.com/cloudsdktool/cloud-sdk
     entrypoint: gcloud
     args:
       - run
       - deploy
-      - $_SERVICE_NAME
+      - $_DELIVERY_SERVICE_NAME
       - '--platform=$_PLATFORM'
       - '--region=$_DEPLOY_REGION'
-      - '--image=$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+      - '--image=$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_DELIVERY_SERVICE_NAME:$COMMIT_SHA'
       - '--no-traffic'
-    id: Deploy
+    id: Deploy Delivery
+    waitFor:
+      - Push Delivery
+
+  # asset-resize: Pub/Sub push consumer (replaces the GcfResize GCF).
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - '-t'
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_RESIZE_SERVICE_NAME:$COMMIT_SHA'
+      - .
+      - '-f'
+      - cloud/resize.Dockerfile
+    id: Build Resize
+    waitFor:
+      - Copy Binaries to Workspace
+
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_RESIZE_SERVICE_NAME:$COMMIT_SHA'
+    id: Push Resize
+    waitFor:
+      - Build Resize
+
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - $_RESIZE_SERVICE_NAME
+      - '--platform=$_PLATFORM'
+      - '--region=$_DEPLOY_REGION'
+      - '--image=$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_RESIZE_SERVICE_NAME:$COMMIT_SHA'
+      - '--no-traffic'
+    id: Deploy Resize
+    waitFor:
+      - Push Resize
+
 images:
-  - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_SERVICE_NAME:$COMMIT_SHA'
+  - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/build:$COMMIT_SHA'
+  - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/build:latest'
+  - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_DELIVERY_SERVICE_NAME:$COMMIT_SHA'
+  - '$_GCR_HOSTNAME/$PROJECT_ID/$REPO_NAME/$_RESIZE_SERVICE_NAME:$COMMIT_SHA'
+
 options:
   substitutionOption: ALLOW_LOOSE
+
 substitutions:
-  _SERVICE_NAME: asset-delivery
+  _DELIVERY_SERVICE_NAME: asset-delivery
+  _RESIZE_SERVICE_NAME: asset-resize
   _GCR_HOSTNAME: us.gcr.io
   _PLATFORM: managed
   _DEPLOY_REGION: northamerica-northeast1
+
 tags:
   - asset-delivery
+  - asset-resize

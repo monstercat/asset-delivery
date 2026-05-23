@@ -1,48 +1,82 @@
 # Asset Delivery
 
-Delivers resized assets (images) in response to HTTP requests. It contains two parts:
-- Delivery server
-- Resizing routine 
+Delivers resized assets (images) in response to HTTP requests. It contains
+two parts:
 
-## Delivery Server 
+- **Delivery server** (`asset-delivery` Cloud Run service)
+- **Resize worker** (`asset-resize` Cloud Run service)
 
-The delivery server attempts to find an existing resized file from a storage location. If the resized file is found it 
-returns the resized file. Otherwise, it will deliver the original file and send an instruction to create a resized
-version of said file. 
+Both binaries are built from a single image (`cloud/build.Dockerfile`) and
+copied into per-service runtime images. The pipeline is wired in
+`cloudbuild.yaml`.
 
-### HTTP Request 
+## Delivery Server
 
-Each request needs to have the following as URL parameters: 
-- width 
-- location
-- encoding (e.g., webp, jpeg, png)
+The delivery server attempts to find an existing resized file from a
+storage location. If the resized file is found it returns the resized
+file. Otherwise, it delivers the original file and publishes a resize
+request to the `asset-delivery-resize` Pub/Sub topic.
 
-For example, if you want a version of https://host/path with width=100 and encoding=webp, the resulting request would be
-`https://[host]?width=100&url=https://host/path&encoding=webp`
+### HTTP Request
 
-### Environment Variables 
+Each request needs the following URL parameters:
 
-- **BUCKET**: GCP Storage bucket name
-- **HOST**: GCP Storage host (optional). You can fill this in if an emulator is being used.
+- `width`
+- `url`
+- `encoding` (e.g., webp, jpeg, png)
 
-### Command-Line Arguments 
+For example, to request a version of `https://host/path` with `width=100`
+and `encoding=webp`:
 
-- **ADDRESS**: Address to bind to. Defaults to: 0.0.0.0:80
-- **credentials**: The location of the Google JWT file.
-- **allowedHosts**: A comma separated list of domain hosts. This is used to filter requests by the host in the "urL" query param (above). Only "url"s that contain one of the provided hosts will be resized. An empty value allows any. 
-- **project-id**: Google Project ID (for logging & pubsub) 
-
-### TODO:
-
-- Externalize the PubSub topic in an environment variable 
-
-
-## Resizing 
-
-Resizing is done through `GcfResize` function which is meant to be run as a Google Cloud Function. 
+```
+https://[host]?width=100&url=https://host/path&encoding=webp
+```
 
 ### Environment Variables
 
-- **PROJECTID**: Google Project ID (used for logging)
 - **BUCKET**: GCP Storage bucket name
+- **HOST**: GCP Storage host (optional). Used by emulators.
 
+### Command-Line Arguments
+
+- **address**: Bind address. Defaults to `0.0.0.0:80`.
+- **credentials**: Path to a Google JWT file.
+- **allow**: Comma-separated allowed hosts for the `url` query param.
+  Empty allows any.
+- **project-id**: Google Project ID (for logging & pubsub).
+
+## Resize Worker
+
+The resize worker consumes messages from the `asset-delivery-resize`
+Pub/Sub topic via a **push subscription**. Each push delivery is an
+HTTP POST with the Pub/Sub envelope as the body
+(see [Pub/Sub push docs][push-docs]). The worker unmarshals the embedded
+`ResizeOptions`, resizes the source image, and writes the result to the
+configured GCS bucket.
+
+HTTP status drives Pub/Sub redelivery:
+
+- `2xx` — message acked
+- `4xx` — permanent failure (e.g., malformed payload); routed to dead
+  letter after `maxDeliveryAttempts`
+- `5xx` — transient failure; Pub/Sub retries with backoff
+
+### Environment Variables
+
+- **PROJECTID**: Google Project ID (used for Cloud Logging)
+- **BUCKET**: GCP Storage bucket name
+- **HOST**: GCP Storage host (optional)
+- **DEFAULT_CACHE_CONTROL**: Fallback `Cache-Control` value when the
+  upstream response carries none
+- **PORT**: Bind port (Cloud Run sets this; defaults to `8080`)
+
+### Pub/Sub Push Subscription
+
+The push subscription on `projects/connect-1321/topics/asset-delivery-resize`
+should be configured to POST to the `asset-resize` Cloud Run service URL.
+For authenticated push, set the subscription's push auth service account
+and grant it `roles/run.invoker` on `asset-resize`. Configure a
+dead-letter topic + `maxDeliveryAttempts` to avoid hot-looping on poison
+messages.
+
+[push-docs]: https://cloud.google.com/pubsub/docs/push
