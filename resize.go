@@ -25,10 +25,47 @@ const ResizeTopic = "asset-delivery-resize"
 // supplied one.
 var defaultCacheControl = os.Getenv("DEFAULT_CACHE_CONTROL")
 
+// defaultImageFetchTimeout bounds the upstream fetch in GetImage.
+//
+// Sources span three orders of magnitude: a Spotify artist image is 640x640 at
+// well under 250 KB, while an unresized cover straight out of Label Manager can
+// be 6000x3989 at 34 MB. The budget also has to cover the origin's own redirect
+// hop and object-signing latency on top of the transfer itself, so the previous
+// 5s left no headroom for the large end of that range.
+//
+// The budget alone was never the whole story — see GetImage for the reason a
+// failure here used to be permanent — but it is the part that made failure
+// likely in the first place.
+const defaultImageFetchTimeout = 60 * time.Second
+
+// imageFetchTimeout is the active budget, overridable with IMAGE_FETCH_TIMEOUT
+// (any time.ParseDuration value) so it can be tuned without shipping code.
+//
+// Keep the Pub/Sub subscription's ack deadline at or above this value. If the
+// deadline is shorter, a slow fetch is redelivered while the first attempt is
+// still running and the work is duplicated rather than retried.
+var imageFetchTimeout = resolveFetchTimeout(os.Getenv("IMAGE_FETCH_TIMEOUT"), defaultImageFetchTimeout)
+
+// resolveFetchTimeout parses an IMAGE_FETCH_TIMEOUT override, falling back to
+// fallback when unset, unparseable or non-positive. A bad value must not be
+// able to disable the timeout altogether — an unbounded fetch would pin a
+// worker instance for as long as the origin keeps the connection open.
+func resolveFetchTimeout(raw string, fallback time.Duration) time.Duration {
+	d, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || d <= 0 {
+		return fallback
+	}
+	return d
+}
+
 func Resize(fs FileSystem, opts ResizeOptions) error {
 	buf, cc, err := GetImage(opts.Location)
 	if err != nil {
-		return &ParamError{Param: "url", Detail: fmt.Sprintf("Could not get image: %s", opts.Location), RootError: err}
+		// Passed through rather than re-wrapped: GetImage has already decided
+		// whether this failure is worth retrying, and flattening it back into a
+		// ParamError here is precisely what made every transient fetch failure
+		// permanent.
+		return err
 	}
 	img, format, err := ReaderToImage(bytes.NewReader(buf), opts.Location)
 	if err != nil {
@@ -55,17 +92,61 @@ func Resize(fs FileSystem, opts ResizeOptions) error {
 	return nil
 }
 
+// GetImage fetches the source image, returning its bytes and the upstream
+// Cache-Control header.
+//
+// Errors are classified by whether a later attempt could plausibly succeed,
+// because the worker converts the status directly into a Pub/Sub ack decision
+// (see cmd/resize.Server.ServeHTTP): a 4xx dead-letters the message, a 5xx
+// retries it. Transport failures, timeouts and upstream 5xx/429/408 are
+// therefore SystemError (500, retried), while a definitive upstream rejection
+// such as 404 or 403 is a ParamError (400, dead-lettered) — retrying cannot
+// bring back a source that is gone.
+//
+// Getting that split wrong is expensive in one direction: a transient failure
+// classified as permanent means the variant is never generated and every
+// subsequent delivery request serves the unresized original forever.
 func GetImage(url string) ([]byte, string, error) {
 	client := http.Client{
-		Timeout: time.Second * 5,
+		Timeout: imageFetchTimeout,
 	}
 	res, err := client.Get(url)
 	if err != nil {
-		return nil, "", err
+		// DNS, connection reset, TLS, or the timeout above. None of these say
+		// anything about whether the source is valid.
+		return nil, "", &SystemError{
+			RootError: err,
+			Detail:    fmt.Sprintf("Could not fetch image: %s", url),
+		}
 	}
 	defer res.Body.Close()
+	if res.StatusCode < 200 || res.StatusCode > 299 {
+		return nil, "", statusError(url, res.StatusCode)
+	}
 	buf, err := io.ReadAll(res.Body)
-	return buf, res.Header.Get("Cache-Control"), err
+	if err != nil {
+		// A read that dies partway through is a transport failure like any
+		// other; the bytes may well arrive in full on the next attempt.
+		return nil, "", &SystemError{
+			RootError: err,
+			Detail:    fmt.Sprintf("Could not read image: %s", url),
+		}
+	}
+	return buf, res.Header.Get("Cache-Control"), nil
+}
+
+// statusError maps a non-2xx upstream response onto the retry classification
+// described on GetImage.
+func statusError(url string, status int) error {
+	detail := fmt.Sprintf("Upstream responded %d for image: %s", status, url)
+	root := fmt.Errorf("upstream status %d", status)
+	switch {
+	case status >= 500,
+		status == http.StatusTooManyRequests,
+		status == http.StatusRequestTimeout:
+		return &SystemError{RootError: root, Detail: detail}
+	}
+	return &ParamError{Param: "url", Detail: detail, RootError: root}
 }
 
 func ResizeImage(img image.Image, target uint) (image.Image, error) {
