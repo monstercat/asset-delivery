@@ -14,7 +14,8 @@ const MaxImageDimension = 4096
 
 type ResizeOptions struct {
 	Width        uint
-	Location     string
+	CacheKey     string // stable identity; hashed when present
+	Location     string // fetch URL; hashed when CacheKey empty (legacy)
 	HashSum      string
 	Encoding     string
 	Prefix       string
@@ -27,9 +28,15 @@ type ResizeOptionsProcessed struct {
 	Force bool
 }
 
+// PopulateHash hashes CacheKey when present (gold-http path); else
+// Location (legacy browser-url path, retained for the shared consumer).
 func (opts *ResizeOptions) PopulateHash() {
+	key := opts.CacheKey
+	if key == "" {
+		key = opts.Location
+	}
 	hash := sha1.New()
-	hash.Write([]byte(opts.Location))
+	hash.Write([]byte(key))
 	sum := hash.Sum(nil)
 	opts.HashSum = fmt.Sprintf("%x", sum)
 }

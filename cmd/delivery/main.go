@@ -11,8 +11,6 @@ import (
 	. "github.com/monstercat/asset-delivery"
 )
 
-
-
 func main() {
 	var address, credsFilename, allowedHosts, projectId string
 	flag.StringVar(&address, "address", "0.0.0.0:80", "The binding address for the application.")
@@ -51,7 +49,11 @@ func main() {
 		PermittedHosts: strings.Split(allowedHosts, ","),
 		Prefix:         "resized",
 	}
-	err = http.ListenAndServe(address, server)
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sign/", server.signHandler) // new (gold-http)
+	mux.Handle("/", server)                      // existing public flow
+	err = http.ListenAndServe(address, mux)
 	if err != nil {
 		log.Fatalf("Failed to start listening on %s: %s", address, err.Error())
 	}
