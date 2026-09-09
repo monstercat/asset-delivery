@@ -13,13 +13,14 @@ import (
 const MaxImageDimension = 4096
 
 type ResizeOptions struct {
-	Width        uint
-	CacheKey     string // stable identity; hashed when present
-	Location     string // fetch URL; hashed when CacheKey empty (legacy)
-	HashSum      string
-	Encoding     string
-	Prefix       string
-	CacheControl string
+	Width          uint
+	CacheKey       string // stable identity; hashed when present
+	Location       string // fetch URL; hashed when CacheKey empty (legacy)
+	HashSum        string
+	Encoding       string
+	Prefix         string
+	CacheControl   string
+	IgnoreIfExists bool // skip fetch+resize+write when the object is warm + fresh
 }
 
 type ResizeOptionsProcessed struct {

@@ -4,6 +4,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/marcw/cachecontrol"
 )
 
 var ErrNoFile = errors.New("no file")
@@ -30,3 +32,12 @@ type FileInfo interface {
 	FileInfoRead
 }
 
+// IsExpired reports whether info is past its Cache-Control max-age. An
+// object with no max-age never expires (returns false).
+func IsExpired(info FileInfo) bool {
+	control := cachecontrol.Parse(info.CacheControl())
+	if control.MaxAge() <= 0 {
+		return false
+	}
+	return time.Now().After(info.Created().Add(control.MaxAge()))
+}

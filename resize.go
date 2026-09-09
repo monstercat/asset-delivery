@@ -26,6 +26,16 @@ const ResizeTopic = "asset-delivery-resize"
 var defaultCacheControl = os.Getenv("DEFAULT_CACHE_CONTROL")
 
 func Resize(fs FileSystem, opts ResizeOptions) error {
+	if opts.IgnoreIfExists {
+		info, err := fs.Info(opts.ObjectKey())
+		if err == nil && info != nil && !IsExpired(info) {
+			return nil // warm + fresh: no fetch, decode, encode, or write
+		}
+		if err != nil && err != ErrNoFile {
+			return &SystemError{Detail: "Could not check if image already exists.", RootError: err}
+		}
+		// ErrNoFile, or exists-but-stale: fall through and (re)resize.
+	}
 	buf, cc, err := GetImage(opts.Location)
 	if err != nil {
 		return &ParamError{Param: "url", Detail: fmt.Sprintf("Could not get image: %s", opts.Location), RootError: err}
