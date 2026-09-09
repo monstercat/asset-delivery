@@ -12,7 +12,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/marcw/cachecontrol"
 	"github.com/monstercat/golib/logger"
 
 	. "github.com/monstercat/asset-delivery"
@@ -118,14 +117,6 @@ func (s *Server) sendResize(opts ResizeOptions, l logger.Logger) {
 	l.Log(logger.SeverityInfo, "Resize request sent "+ResizeTopic)
 }
 
-func isExpired(info FileInfo) bool {
-	control := cachecontrol.Parse(info.CacheControl())
-	if control.MaxAge() <= 0 {
-		return false
-	}
-	return time.Now().After(info.Created().Add(control.MaxAge()))
-}
-
 func (s *Server) NeedsResizing(opts ResizeOptionsProcessed) (bool, error) {
 	if opts.Force {
 		return true, nil
@@ -133,7 +124,7 @@ func (s *Server) NeedsResizing(opts ResizeOptionsProcessed) (bool, error) {
 	info, err := s.FS.Info(opts.ObjectKey())
 	if err != nil && err != ErrNoFile {
 		return false, &SystemError{RootError: err, Detail: "Could not check if image already exists."}
-	} else if info != nil && !isExpired(info) {
+	} else if info != nil && !IsExpired(info) {
 		return false, nil
 	}
 	return true, nil
@@ -180,7 +171,7 @@ func (s *Server) signHandler(w http.ResponseWriter, r *http.Request) {
 	opts.PopulateHash() // hashes CacheKey
 
 	info, err := s.FS.Info(opts.ObjectKey())
-	if err == ErrNoFile || info == nil || isExpired(info) {
+	if err == ErrNoFile || info == nil || IsExpired(info) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
