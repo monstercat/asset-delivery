@@ -57,3 +57,32 @@ func TestServeHTTP_RejectsMalformedMessageData(t *testing.T) {
 		t.Fatalf("expected 400 for bad message data, got %d", rec.Code)
 	}
 }
+
+func TestServeHTTP_AcksZeroWidth(t *testing.T) {
+	data, err := json.Marshal(map[string]any{
+		"Location": "https://cdn.example.com/logo.png",
+		"Encoding": "webp",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	envelope := map[string]any{
+		"message": map[string]any{
+			"data":      base64.StdEncoding.EncodeToString(data),
+			"messageId": "test-msg-2",
+		},
+		"subscription": "projects/test/subscriptions/sub",
+	}
+	body, err := json.Marshal(envelope)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// FS is nil: reaching Resize would panic, so a 204 proves the skip.
+	s := newTestServer()
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body)))
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("expected 204 for 0px width, got %d", rec.Code)
+	}
+}

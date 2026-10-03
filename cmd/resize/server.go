@@ -72,6 +72,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Logger:  s.Logger,
 		Context: data,
 	}
+
+	// A 0px width resizes to an empty image, which no encoder accepts.
+	// Ack it so Pub/Sub stops redelivering; any non-2xx is retried.
+	if data.Width == 0 {
+		l.Log(logger.SeverityWarning, fmt.Sprintf("Ignoring 0px resize (messageId=%s, hash=%s)", req.Message.MessageID, data.HashSum))
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
 	l.Log(logger.SeverityInfo, fmt.Sprintf("Resizing (messageId=%s, hash=%s, width=%d)", req.Message.MessageID, data.HashSum, data.Width))
 
 	if err := Resize(s.FS, data); err != nil {
